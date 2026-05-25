@@ -1,0 +1,26 @@
+# Environment
+.env
+.env.local
+
+# Go
+api/vendor/
+api/*.exe
+api/server
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+
+# Uploads
+uploads/*.mp4
+uploads/*.jpg
+uploads/*.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
