@@ -2,6 +2,7 @@ package posts
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -183,16 +184,16 @@ func (h *Handler) Schedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post, err := h.service.Schedule(r.Context(), id, userID, req)
-	if err != nil {
+	if err := h.service.Schedule(r.Context(), id, userID, req); err != nil {
+		if err == pgx.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "post not found"})
+			return
+		}
+		log.Printf("[posts] schedule error post=%s user=%s: %v", id, userID, err)
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to schedule post"})
 		return
 	}
-	if post == nil {
-		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "post not found"})
-		return
-	}
-	writeJSON(w, http.StatusOK, post)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "scheduled"})
 }
 
 // POST /api/posts/suggest-caption
