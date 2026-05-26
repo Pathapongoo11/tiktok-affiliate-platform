@@ -170,3 +170,24 @@ func TestGenerateVideo_DefaultsFPSAndDuration(t *testing.T) {
 	// Expected: error from FFmpeg not found or file not found — not a nil-panic
 	assert.Error(t, err)
 }
+
+func TestGenerateVideo_ErrorContainsFfmpegPrefix(t *testing.T) {
+	// Regression guard: error message must include "ffmpeg failed" prefix and
+	// NOT be just the raw exit code string. This ensures the caller (service.go)
+	// receives diagnostic information including FFmpeg's stderr output.
+	cfg := videos.VideoConfig{
+		InputImages: []string{"nonexistent_img.jpg"},
+		OutputPath:  t.TempDir() + "/out.mp4",
+		DurationSec: 5,
+	}
+
+	err := videos.GenerateVideo(cfg)
+
+	require.Error(t, err)
+	// Must start with our wrapper prefix, NOT the bare "exit status N"
+	assert.True(t,
+		strings.HasPrefix(err.Error(), "ffmpeg failed") ||
+			strings.HasPrefix(err.Error(), "failed to create image list file"),
+		"error must start with diagnostic prefix, got: %q", err.Error(),
+	)
+}
