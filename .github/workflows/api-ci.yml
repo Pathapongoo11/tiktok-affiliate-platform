@@ -29,6 +29,7 @@ jobs:
           working-directory: api
           args: >
             --timeout=5m
+            --go=1.23
             --enable=govet,errcheck,staticcheck,unused,gosimple,ineffassign,typecheck,gocyclo,misspell,unconvert,gocritic
           only-new-issues: false
 
