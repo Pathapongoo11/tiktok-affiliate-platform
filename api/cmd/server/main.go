@@ -16,6 +16,7 @@ import (
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/dashboard"
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/posts"
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/products"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/tiktok"
 )
 
 func main() {
@@ -66,6 +67,16 @@ func main() {
 
 			dashboardHandler := dashboard.NewHandler(dashboard.NewService(pool, redisClient))
 			r.Mount("/dashboard", dashboardHandler.Routes())
+
+			// TikTok integration
+			tiktokClient := tiktok.NewClient(cfg)
+			tiktokRepo := tiktok.NewRepository(pool)
+			tiktokHandler := tiktok.NewHandler(tiktokClient, tiktokRepo)
+			r.Mount("/tiktok", tiktokHandler.Routes())
+
+			// Start TikTok scheduler in background
+			scheduler := tiktok.NewScheduler(pool, tiktokClient)
+			go scheduler.Start(ctx)
 		})
 	})
 
