@@ -25,6 +25,11 @@ linters-settings:
       - diagnostic
       - performance
       - style
+    disabled-checks:
+      - hugeParam          # micro-optimisation; not worth pointer-ifying all request types
+      - exitAfterDefer     # log.Fatalf in main() after defer is intentional and common
+      - sprintfQuotedString # fires on JSON templates where %q would break the format
+      - whyNoLint          # nolint explanations enforced by code review, not CI
 
 issues:
   exclude-rules:

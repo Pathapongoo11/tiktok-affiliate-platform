@@ -43,7 +43,7 @@ func main() {
 	if uploadsDir == "" {
 		uploadsDir = "./uploads"
 	}
-	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
+	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
 		log.Fatalf("create uploads dir: %v", err)
 	}
 
@@ -54,7 +54,7 @@ func main() {
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","service":"tiktok-affiliate-api"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","service":"tiktok-affiliate-api"}`))
 	})
 
 	r.Route("/api", func(r chi.Router) {

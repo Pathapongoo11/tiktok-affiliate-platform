@@ -23,7 +23,7 @@ func GenerateVideo(cfg VideoConfig) error {
 	}
 
 	// Ensure output directory exists
-	if err := os.MkdirAll(filepath.Dir(cfg.OutputPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfg.OutputPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create output dir: %w", err)
 	}
 
