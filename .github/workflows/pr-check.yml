@@ -1,0 +1,48 @@
+name: PR Quality Gate
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  pr-title:
+    name: Check PR title format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            const pattern = /^\[(Infrastructure|API|TikTok|Video|Frontend|Tests|CI|Backoffice|Fix|Hotfix)\] .+/;
+            if (!pattern.test(title)) {
+              core.setFailed(
+                `PR title "${title}" does not follow format: [Module] Description\n` +
+                `Valid modules: Infrastructure, API, TikTok, Video, Frontend, Tests, CI, Backoffice, Fix, Hotfix`
+              );
+            }
+
+  co-author-check:
+    name: Verify Co-Authored-By in commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commits for Co-Authored-By
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+          MISSING=0
+          while IFS= read -r sha; do
+            msg=$(git log --format="%B" -n 1 "$sha")
+            if ! echo "$msg" | grep -q "Co-Authored-By: Pathapongoo11"; then
+              echo "::warning::Commit $sha missing Co-Authored-By: Pathapongoo11"
+              MISSING=$((MISSING + 1))
+            fi
+          done < <(git log --format="%H" "$BASE..$HEAD")
+
+          if [ "$MISSING" -gt "0" ]; then
+            echo "::warning::$MISSING commits are missing Co-Authored-By tag"
+          fi
