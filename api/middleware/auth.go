@@ -68,3 +68,9 @@ func GetUserID(ctx context.Context) (uuid.UUID, bool) {
 	id, ok := ctx.Value(UserIDKey).(uuid.UUID)
 	return id, ok
 }
+
+// InjectUserID stores a userID in the context. Used by tests to simulate
+// an authenticated request without running the full JWT middleware.
+func InjectUserID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, UserIDKey, id)
+}

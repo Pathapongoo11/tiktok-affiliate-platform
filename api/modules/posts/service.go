@@ -9,11 +9,22 @@ import (
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/models"
 )
 
-type Service struct {
-	repo *Repository
+// PostRepository defines the persistence interface used by Service.
+type PostRepository interface {
+	Create(ctx context.Context, p *models.Post) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Post, error)
+	GetByIDForUser(ctx context.Context, id, userID uuid.UUID) (*models.Post, error)
+	List(ctx context.Context, userID uuid.UUID, status string, limit, offset int) ([]*models.Post, int, error)
+	Update(ctx context.Context, p *models.Post) error
+	Schedule(ctx context.Context, id, userID uuid.UUID, req models.SchedulePostRequest) error
+	Delete(ctx context.Context, id, userID uuid.UUID) error
 }
 
-func NewService(repo *Repository) *Service {
+type Service struct {
+	repo PostRepository
+}
+
+func NewService(repo PostRepository) *Service {
 	return &Service{repo: repo}
 }
 
