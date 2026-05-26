@@ -57,6 +57,10 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"ok","service":"tiktok-affiliate-api"}`))
 	})
 
+	// Serve generated videos, uploaded images, and audio files.
+	// /uploads/* → <uploadsDir>/ on the server filesystem.
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadsDir))))
+
 	r.Route("/api", func(r chi.Router) {
 		// ── Auth (public) ──────────────────────────────────────────────
 		authSvc := auth.NewService(auth.NewRepository(pool), cfg.JWTSecret)

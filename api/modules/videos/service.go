@@ -62,10 +62,11 @@ func (s *Service) processJob(ctx context.Context, job *models.VideoJob) {
 		return
 	}
 
-	outputPath := filepath.Join(
-		s.uploadsDir,
-		fmt.Sprintf("video_%s_%d.mp4", job.ID, time.Now().Unix()),
-	)
+	filename := fmt.Sprintf("video_%s_%d.mp4", job.ID, time.Now().Unix())
+	// outputFSPath is used by FFmpeg (server filesystem).
+	// outputURLPath is stored in DB and returned to the browser (/uploads/... URL).
+	outputFSPath := filepath.Join(s.uploadsDir, filename)
+	outputURLPath := "/uploads/" + filename
 
 	dur := job.DurationSeconds
 	if dur == 0 {
@@ -75,7 +76,7 @@ func (s *Service) processJob(ctx context.Context, job *models.VideoJob) {
 		InputImages: job.InputImages,
 		OverlayText: job.OverlayText,
 		AudioPath:   job.AudioPath,
-		OutputPath:  outputPath,
+		OutputPath:  outputFSPath,
 		DurationSec: dur,
 		FPS:         1,
 	}
@@ -85,7 +86,8 @@ func (s *Service) processJob(ctx context.Context, job *models.VideoJob) {
 		return
 	}
 
-	s.repo.UpdateJobStatus(ctx, job.ID, "done", outputPath, "") //nolint:errcheck
+	// Store the public URL path so the browser can fetch it directly.
+	s.repo.UpdateJobStatus(ctx, job.ID, "done", outputURLPath, "") //nolint:errcheck
 }
 
 // GetJob returns a single job by ID.

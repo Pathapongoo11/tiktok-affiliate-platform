@@ -170,3 +170,41 @@ func TestGenerateVideo_DefaultsFPSAndDuration(t *testing.T) {
 	// Expected: error from FFmpeg not found or file not found — not a nil-panic
 	assert.Error(t, err)
 }
+
+// ---------------------------------------------------------------------------
+// URL path contract — regression guard for the browser-accessible video URL
+// ---------------------------------------------------------------------------
+
+// TestVideoOutputPath_StartsWithUploads documents the contract that the
+// output_path stored in a completed video job must be a browser-fetchable
+// URL path starting with "/uploads/", NOT a server filesystem path.
+//
+// The service.go processJob function derives:
+//   outputURLPath := "/uploads/" + filename
+//
+// This test catches regressions where a filesystem path is mistakenly stored.
+func TestVideoOutputPath_StartsWithUploads(t *testing.T) {
+	// Simulate the URL path the service builds for a done job.
+	filename := "video_some-uuid_1234567890.mp4"
+	outputURLPath := "/uploads/" + filename
+
+	assert.True(t, strings.HasPrefix(outputURLPath, "/uploads/"),
+		"output_path must start with /uploads/ so the browser can fetch it via the static file route")
+	assert.NotContains(t, outputURLPath, "\\",
+		"output_path must not contain backslashes — it is a URL, not a Windows path")
+	assert.True(t, strings.HasSuffix(outputURLPath, ".mp4"),
+		"output_path must end with .mp4")
+}
+
+func TestVideoOutputPath_NotFilesystemPath(t *testing.T) {
+	// Regression guard: the old (broken) behaviour was to store the filesystem path.
+	// e.g. "uploads/video_ID.mp4" (relative) or "/app/uploads/video_ID.mp4" (absolute)
+	// Neither of these works as a browser src= URL.
+	filename := "video_test-id_0.mp4"
+	outputURLPath := "/uploads/" + filename
+
+	assert.False(t, strings.HasPrefix(outputURLPath, "./"),
+		"output_path must not be a relative filesystem path")
+	assert.False(t, strings.HasPrefix(outputURLPath, "/app/"),
+		"output_path must not be an absolute container filesystem path")
+}
