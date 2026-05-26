@@ -1,0 +1,38 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - govet          # Go vet checks
+    - errcheck       # Unchecked errors
+    - staticcheck    # Static analysis
+    - unused         # Unused code
+    - gosimple       # Simplification suggestions
+    - ineffassign    # Ineffectual assignments
+    - typecheck      # Type errors
+    - gocyclo        # Cyclomatic complexity
+    - misspell       # Spelling mistakes
+    - unconvert      # Unnecessary type conversions
+    - gocritic       # Various checks
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15  # Flag functions with complexity > 15
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+      - style
+
+issues:
+  exclude-rules:
+    # Ignore test files for some checks
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gocritic
+
+  max-issues-per-linter: 50
+  max-same-issues: 5

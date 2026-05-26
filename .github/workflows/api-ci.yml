@@ -1,0 +1,165 @@
+name: API CI — Lint, Test & Coverage
+
+on:
+  push:
+    branches: [develop, main, 'feature/**']
+    paths: ['api/**', '.github/workflows/api-ci.yml']
+  pull_request:
+    branches: [develop, main]
+    paths: ['api/**']
+
+jobs:
+  # ─── 1. Code Smell & Lint ───────────────────────────────────────────
+  lint:
+    name: golangci-lint (code smell)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+          cache-dependency-path: api/go.sum
+
+      # Install golangci-lint from source so it is compiled with the same
+      # Go 1.26 toolchain as the project.  Pre-built binaries (v1.64.8) were
+      # compiled with Go 1.24, which refuses to typecheck packages that
+      # declare `go 1.25` in their own go.mod (redis, ristretto, pgx, chi).
+      - name: Install golangci-lint (built with Go 1.26)
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+
+      - name: Run golangci-lint
+        working-directory: api
+        run: |
+          golangci-lint run \
+            --out-format=github-actions \
+            --timeout=5m \
+            --enable=govet,errcheck,staticcheck,unused,gosimple,ineffassign,typecheck,gocyclo,misspell,unconvert,gocritic
+
+  # ─── 2. Unit Tests + Coverage ────────────────────────────────────────
+  test:
+    name: Go Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+          cache-dependency-path: api/go.sum
+
+      - name: Download dependencies
+        working-directory: api
+        run: go mod download
+
+      - name: Run tests with coverage
+        working-directory: api
+        run: |
+          go test ./... \
+            -v \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -timeout=120s \
+            2>&1 | tee test-output.txt
+          echo "EXIT_CODE=${PIPESTATUS[0]}" >> $GITHUB_ENV
+
+      - name: Generate coverage report
+        if: always()
+        working-directory: api
+        run: |
+          go tool cover -func=coverage.out | tee coverage-summary.txt
+          TOTAL=$(grep "total:" coverage-summary.txt | awk '{print $3}')
+          echo "COVERAGE_TOTAL=$TOTAL" >> $GITHUB_ENV
+
+      - name: Parse test results
+        if: always()
+        working-directory: api
+        run: |
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Count pass/fail
+          PASS=$(grep -c "^--- PASS" test-output.txt || true)
+          FAIL=$(grep -c "^--- FAIL" test-output.txt || true)
+          SKIP=$(grep -c "^--- SKIP" test-output.txt || true)
+
+          echo "| ✅ Pass | ❌ Fail | ⏭️ Skip | 📊 Coverage |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|--------|------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| $PASS  | $FAIL  | $SKIP  | $COVERAGE_TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Show failing tests in detail
+          if [ "$FAIL" -gt "0" ]; then
+            echo "### ❌ Failing Tests" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -A 20 "^--- FAIL" test-output.txt >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Coverage by package
+          echo "### 📦 Coverage by Package" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat coverage-summary.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: |
+            api/coverage.out
+            api/test-output.txt
+            api/coverage-summary.txt
+
+      - name: Comment failing tests on PR
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('api/test-output.txt', 'utf8');
+            const lines = output.split('\n');
+
+            // Collect failing test blocks
+            let failBlocks = [];
+            let inFail = false;
+            let block = [];
+            for (const line of lines) {
+              if (line.startsWith('--- FAIL')) {
+                inFail = true;
+                block = [line];
+              } else if (inFail) {
+                if (line.startsWith('--- ') || line.startsWith('=== RUN') || line === '') {
+                  if (block.length > 1) failBlocks.push(block.join('\n'));
+                  inFail = line.startsWith('--- FAIL');
+                  block = inFail ? [line] : [];
+                } else {
+                  block.push(line);
+                }
+              }
+            }
+
+            const body = [
+              '## ❌ Unit Tests Failed',
+              '',
+              '**Failing tests:**',
+              '```',
+              failBlocks.slice(0, 10).join('\n\n') || 'See full log in Actions',
+              '```',
+              '',
+              '_Fix these before merging. Run `go test ./... -v` locally to reproduce._'
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+      - name: Fail if tests failed
+        if: env.EXIT_CODE != '0'
+        run: exit 1
