@@ -14,7 +14,7 @@ import (
 )
 
 type Handler struct {
-	service *Service
+	service ServiceInterface
 }
 
 func NewHandler(service *Service) *Handler {
