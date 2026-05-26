@@ -69,22 +69,28 @@ export default function ContentEditor() {
     setUploading(true)
     setError('')
     try {
-      const paths: string[] = []
+      const newPaths: string[] = []
       for (const file of files) {
         const fd = new FormData()
         fd.append('image', file)
         const res = await client.post('/videos/upload', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
-        paths.push(res.data.path || res.data.filePath || res.data.url)
+        newPaths.push(res.data.path || res.data.filePath || res.data.url)
       }
-      setUploadedPaths((prev) => [...prev, ...paths])
+      // Use functional update then trigger generation via ref to avoid stale closure
+      setUploadedPaths((prev) => {
+        const all = [...prev, ...newPaths]
+        // Schedule auto-generate on the next tick so state is committed
+        setTimeout(() => autoGenRef.current(all), 0)
+        return all
+      })
     } catch {
       setError('Image upload failed. Please try again.')
     } finally {
       setUploading(false)
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -94,11 +100,12 @@ export default function ContentEditor() {
 
   // ── Video generation ─────────────────────────────────────────────────
 
-  const generateVideo = async () => {
-    if (uploadedPaths.length === 0) {
-      setError('Please upload at least one image.')
-      return
-    }
+  // Ref so onDrop (useCallback with [] deps) can call the latest version of startGeneration
+  const autoGenRef = useRef<(paths: string[]) => void>(() => {})
+
+  // Core generation logic — accepts explicit paths so it works from both auto and manual triggers
+  const startGeneration = useCallback(async (paths: string[]) => {
+    if (paths.length === 0 || polling) return
     setError('')
     setPolling(true)
     try {
@@ -106,7 +113,7 @@ export default function ContentEditor() {
         ? `${selectedProduct.name} — ฿${selectedProduct.price}`
         : ''
       const res = await client.post('/videos/generate', {
-        input_images: uploadedPaths,
+        input_images: paths,
         overlay_text: overlayText,
         duration_seconds: 15,
       })
@@ -133,7 +140,17 @@ export default function ContentEditor() {
       setPolling(false)
       setError('Failed to start video generation.')
     }
-  }
+  }, [selectedProduct, polling]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep autoGenRef pointing at the latest startGeneration (so onDrop's setTimeout can call it)
+  useEffect(() => {
+    autoGenRef.current = (paths: string[]) => {
+      if (!polling && !job) startGeneration(paths)
+    }
+  }) // runs every render — intentional
+
+  // Manual "Generate Video" button still works
+  const generateVideo = () => startGeneration(uploadedPaths)
 
   // ── Hashtag helpers ───────────────────────────────────────────────────
 
@@ -168,8 +185,11 @@ export default function ContentEditor() {
           scheduled_at: new Date().toISOString(),
         })
       } else if (scheduledAt) {
+        // datetime-local gives "YYYY-MM-DDTHH:MM" (no timezone).
+        // Go's time.Time JSON decoder requires RFC 3339 — convert here.
+        const scheduledAtISO = new Date(scheduledAt).toISOString()
         await client.post(`/posts/${postId}/schedule`, {
-          scheduled_at: scheduledAt,
+          scheduled_at: scheduledAtISO,
         })
       }
       navigate('/posts')
@@ -360,7 +380,7 @@ export default function ContentEditor() {
               <p className="text-gray-600 font-medium">
                 {isDragActive ? 'Drop images here...' : 'Drag & drop product images'}
               </p>
-              <p className="text-sm text-gray-400 mt-1">or click to browse · JPG, PNG, WebP</p>
+              <p className="text-sm text-gray-400 mt-1">or click to browse · JPG, PNG, WebP · Auto-generates after upload</p>
             </div>
 
             {uploading && <p className="text-sm text-purple-600 text-center">Uploading images...</p>}
