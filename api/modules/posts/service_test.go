@@ -124,22 +124,12 @@ func TestSchedulePost_SetsScheduledAt(t *testing.T) {
 	scheduledAt := time.Now().Add(2 * time.Hour)
 
 	req := models.SchedulePostRequest{ScheduledAt: scheduledAt}
-	scheduledPost := &models.Post{
-		ID:          postID,
-		UserID:      userID,
-		Status:      "scheduled",
-		ScheduledAt: &scheduledAt,
-	}
 
 	repo.On("Schedule", mock.Anything, postID, userID, req).Return(nil)
-	repo.On("GetByID", mock.Anything, postID).Return(scheduledPost, nil)
 
-	post, err := svc.Schedule(context.Background(), postID, userID, req)
+	err := svc.Schedule(context.Background(), postID, userID, req)
 
 	assert.NoError(t, err)
-	assert.NotNil(t, post)
-	assert.Equal(t, "scheduled", post.Status)
-	assert.NotNil(t, post.ScheduledAt)
 	repo.AssertExpectations(t)
 }
 
@@ -153,10 +143,25 @@ func TestSchedulePost_PostNotFound(t *testing.T) {
 
 	repo.On("Schedule", mock.Anything, postID, userID, req).Return(pgx.ErrNoRows)
 
-	post, err := svc.Schedule(context.Background(), postID, userID, req)
+	err := svc.Schedule(context.Background(), postID, userID, req)
 
-	assert.Nil(t, post)
-	assert.NoError(t, err, "pgx.ErrNoRows should be converted to nil post, nil error")
+	assert.ErrorIs(t, err, pgx.ErrNoRows, "not-found should propagate to caller as pgx.ErrNoRows")
+	repo.AssertExpectations(t)
+}
+
+func TestScheduleService_NoGetByIDCall(t *testing.T) {
+	repo := new(mockPostRepo)
+	svc := posts.NewService(repo)
+
+	postID := uuid.New()
+	userID := uuid.New()
+	req := models.SchedulePostRequest{ScheduledAt: time.Now().Add(1 * time.Hour)}
+
+	repo.On("Schedule", mock.Anything, postID, userID, req).Return(nil)
+
+	_ = svc.Schedule(context.Background(), postID, userID, req)
+
+	repo.AssertNotCalled(t, "GetByID", mock.Anything, mock.Anything)
 	repo.AssertExpectations(t)
 }
 

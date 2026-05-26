@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/models"
 )
@@ -84,14 +83,8 @@ func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, req models.U
 	return existing, nil
 }
 
-func (s *Service) Schedule(ctx context.Context, id, userID uuid.UUID, req models.SchedulePostRequest) (*models.Post, error) {
-	if err := s.repo.Schedule(ctx, id, userID, req); err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return s.repo.GetByID(ctx, id)
+func (s *Service) Schedule(ctx context.Context, id, userID uuid.UUID, req models.SchedulePostRequest) error {
+	return s.repo.Schedule(ctx, id, userID, req)
 }
 
 func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
