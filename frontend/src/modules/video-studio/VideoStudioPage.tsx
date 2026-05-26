@@ -26,7 +26,7 @@ export default function VideoStudioPage() {
       const paths: string[] = []
       for (const file of files) {
         const fd = new FormData()
-        fd.append('file', file)
+        fd.append('image', file)
         const res = await client.post('/videos/upload', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
@@ -53,7 +53,7 @@ export default function VideoStudioPage() {
     setError('')
     try {
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('audio', file)
       const res = await client.post('/videos/upload', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
@@ -75,11 +75,11 @@ export default function VideoStudioPage() {
     setPolling(true)
     try {
       const payload: Record<string, unknown> = {
-        imagePaths: uploadedPaths,
-        overlayText,
-        durationSeconds: duration,
+        input_images: uploadedPaths,
+        overlay_text: overlayText,
+        duration_seconds: duration,
       }
-      if (audioPath) payload.audioPath = audioPath
+      if (audioPath) payload.audio_path = audioPath
       const res = await client.post('/videos/generate', payload)
       const jobId = res.data.id || res.data.jobId
       pollRef.current = setInterval(async () => {

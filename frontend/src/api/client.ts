@@ -1,19 +1,5 @@
 import axios from 'axios'
-
-// Convert snake_case keys to camelCase recursively so all API responses
-// match the frontend TypeScript types without manual mapping.
-function toCamel(s: string): string {
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
-}
-function camelizeKeys(val: unknown): unknown {
-  if (Array.isArray(val)) return val.map(camelizeKeys)
-  if (val !== null && typeof val === 'object') {
-    return Object.fromEntries(
-      Object.entries(val as Record<string, unknown>).map(([k, v]) => [toCamel(k), camelizeKeys(v)])
-    )
-  }
-  return val
-}
+import { camelizeKeys } from './camelizeKeys'
 
 const client = axios.create({
   baseURL: '/api',

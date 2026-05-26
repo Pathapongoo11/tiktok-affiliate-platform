@@ -28,7 +28,10 @@ export default function PostsPage() {
 
   useEffect(() => {
     client.get('/posts')
-      .then((res) => setPosts(Array.isArray(res.data) ? res.data : []))
+      .then((res) => {
+        const list = res.data?.data ?? res.data
+        setPosts(Array.isArray(list) ? list : [])
+      })
       .catch(() => setPosts([]))
       .finally(() => setLoading(false))
   }, [])

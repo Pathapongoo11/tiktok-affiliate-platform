@@ -111,41 +111,74 @@ func (h *Handler) listJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/videos/upload
-// Accepts multipart/form-data with field "image" (image/jpeg or image/png).
-// Returns { "path": "...", "filename": "..." } — use path in CreateJobRequest.InputImages.
+// Accepts multipart/form-data with field "image" (image/jpeg, image/png, image/webp)
+// or field "audio" (audio/mpeg, audio/wav, audio/ogg, audio/aac).
+// Returns { "path": "...", "filename": "..." } — use path in CreateJobRequest.InputImages / AudioPath.
 func (h *Handler) uploadImage(w http.ResponseWriter, r *http.Request) {
-	// Limit to 10 MB to guard against accidental large uploads
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
+	// Limit to 50 MB to accommodate audio files
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "request too large or not multipart"})
 		return
 	}
 
+	// Try "image" field first, then "audio" field
 	file, header, err := r.FormFile("image")
+	isAudio := false
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "field 'image' is required"})
-		return
+		file, header, err = r.FormFile("audio")
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "field 'image' or 'audio' is required"})
+			return
+		}
+		isAudio = true
 	}
 	defer file.Close()
 
 	contentType := header.Header.Get("Content-Type")
-	if contentType != "image/jpeg" && contentType != "image/png" {
-		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "only image/jpeg and image/png are accepted"})
-		return
+
+	var ext, subDir string
+	if isAudio {
+		switch contentType {
+		case "audio/mpeg", "audio/mp3":
+			ext = ".mp3"
+		case "audio/wav":
+			ext = ".wav"
+		case "audio/ogg":
+			ext = ".ogg"
+		case "audio/aac":
+			ext = ".aac"
+		default:
+			// Fall back to file extension from original filename
+			if fe := filepath.Ext(header.Filename); fe != "" {
+				ext = fe
+			} else {
+				ext = ".mp3"
+			}
+		}
+		subDir = "audio"
+	} else {
+		switch contentType {
+		case "image/jpeg":
+			ext = ".jpg"
+		case "image/png":
+			ext = ".png"
+		case "image/webp":
+			ext = ".webp"
+		default:
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "only image/jpeg, image/png, and image/webp are accepted"})
+			return
+		}
+		subDir = "images"
 	}
 
-	ext := ".jpg"
-	if contentType == "image/png" {
-		ext = ".png"
-	}
-
-	imagesDir := filepath.Join(h.uploadsDir, "images")
-	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
+	destDir := filepath.Join(h.uploadsDir, subDir)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create uploads directory"})
 		return
 	}
 
 	filename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-	destPath := filepath.Join(imagesDir, filename)
+	destPath := filepath.Join(destDir, filename)
 
 	dest, err := os.Create(destPath)
 	if err != nil {

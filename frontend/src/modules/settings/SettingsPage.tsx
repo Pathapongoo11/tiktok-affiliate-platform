@@ -11,8 +11,8 @@ interface TikTokAccount {
 }
 
 interface TikTokStatus {
-  mock_mode?: boolean
-  connected?: boolean
+  mockMode?: boolean
+  credentialsSet?: boolean
 }
 
 export default function SettingsPage() {
@@ -29,10 +29,11 @@ export default function SettingsPage() {
     } catch {}
 
     Promise.all([
-      client.get('/tiktok/accounts').catch(() => ({ data: [] })),
+      client.get('/tiktok/accounts').catch(() => ({ data: { accounts: [] } })),
       client.get('/tiktok/status').catch(() => ({ data: null })),
     ]).then(([accRes, statusRes]) => {
-      setAccounts(Array.isArray(accRes.data) ? accRes.data : [])
+      const accs = accRes.data?.accounts ?? accRes.data
+      setAccounts(Array.isArray(accs) ? accs : [])
       setTiktokStatus(statusRes.data)
     }).finally(() => setLoadingAccounts(false))
   }, [])
@@ -97,7 +98,7 @@ export default function SettingsPage() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-gray-800 text-lg">Connected TikTok Accounts</h3>
-          {tiktokStatus?.mock_mode && (
+          {tiktokStatus?.mockMode && (
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
               Mock Mode Active
             </span>
@@ -106,9 +107,9 @@ export default function SettingsPage() {
 
         {tiktokStatus && (
           <div className="flex items-center gap-2 text-sm text-gray-500">
-            <div className={`w-2 h-2 rounded-full ${tiktokStatus.connected ? 'bg-green-500' : 'bg-gray-300'}`} />
-            {tiktokStatus.connected ? 'Connected' : 'Not connected'}
-            {tiktokStatus.mock_mode && (
+            <div className={`w-2 h-2 rounded-full ${accounts.length > 0 ? 'bg-green-500' : 'bg-gray-300'}`} />
+            {accounts.length > 0 ? 'Connected' : 'Not connected'}
+            {tiktokStatus.mockMode && (
               <span className="text-yellow-600 font-medium ml-1">(using mock API)</span>
             )}
           </div>

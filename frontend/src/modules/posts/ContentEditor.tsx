@@ -25,7 +25,10 @@ export default function ContentEditor() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    client.get('/products').then((res) => setProducts(Array.isArray(res.data) ? res.data : []))
+    client.get('/products').then((res) => {
+      const list = res.data?.data ?? res.data
+      setProducts(Array.isArray(list) ? list : [])
+    })
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
@@ -36,7 +39,7 @@ export default function ContentEditor() {
       const paths: string[] = []
       for (const file of files) {
         const fd = new FormData()
-        fd.append('file', file)
+        fd.append('image', file)
         const res = await client.post('/videos/upload', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
@@ -68,9 +71,9 @@ export default function ContentEditor() {
         ? `${selectedProduct.name} — ฿${selectedProduct.price}`
         : ''
       const res = await client.post('/videos/generate', {
-        imagePaths: uploadedPaths,
-        overlayText,
-        durationSeconds: 15,
+        input_images: uploadedPaths,
+        overlay_text: overlayText,
+        duration_seconds: 15,
       })
       const jobId = res.data.id || res.data.jobId
       pollRef.current = setInterval(async () => {
@@ -112,14 +115,14 @@ export default function ContentEditor() {
         title: selectedProduct?.name || 'New Post',
         caption,
         hashtags,
-        videoPath: job?.outputPath || '',
-        productId: selectedProduct?.id,
+        video_path: job?.outputPath || '',
+        product_id: selectedProduct?.id,
       })
       const postId = postRes.data.id || postRes.data.postId
       if (postNow) {
-        await client.post(`/posts/${postId}/schedule`, { scheduleNow: true })
+        await client.post(`/posts/${postId}/schedule`, { scheduled_at: new Date().toISOString() })
       } else if (scheduledAt) {
-        await client.post(`/posts/${postId}/schedule`, { scheduledAt })
+        await client.post(`/posts/${postId}/schedule`, { scheduled_at: scheduledAt })
       }
       navigate('/posts')
     } catch {
