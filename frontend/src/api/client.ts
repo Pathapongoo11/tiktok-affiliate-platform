@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { camelizeKeys } from './camelizeKeys'
 
 const client = axios.create({
   baseURL: '/api',
@@ -12,7 +13,10 @@ client.interceptors.request.use((config) => {
 })
 
 client.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    res.data = camelizeKeys(res.data)
+    return res
+  },
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('token')

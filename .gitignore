@@ -12,7 +12,10 @@ frontend/node_modules/
 frontend/dist/
 frontend/.next/
 
-# Uploads
+# Uploads — local generated/uploaded files; ignore all contents
+uploads/images/
+uploads/audio/
+uploads/videos/
 uploads/*.mp4
 uploads/*.jpg
 uploads/*.png

@@ -14,7 +14,7 @@ export default function RegisterPage() {
     setError('')
     setLoading(true)
     try {
-      const res = await client.post('/auth/register', { email, password, displayName })
+      const res = await client.post('/auth/register', { email, password, display_name: displayName })
       const { token, user } = res.data
       localStorage.setItem('token', token)
       localStorage.setItem('user', JSON.stringify(user))

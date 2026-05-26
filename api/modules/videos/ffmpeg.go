@@ -1,12 +1,40 @@
 package videos
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
+
+// fontSearchPaths lists common font locations across OS and Docker images.
+// The first file that exists is used for the drawtext filter.
+var fontSearchPaths = []string{
+	// ttf-freefont on Alpine Linux
+	"/usr/share/fonts/freefont/FreeSans.ttf",
+	// font-noto on Alpine Linux
+	"/usr/share/fonts/noto/NotoSans-Regular.ttf",
+	// Debian/Ubuntu
+	"/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+	"/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+	// macOS (for local dev)
+	"/System/Library/Fonts/Helvetica.ttc",
+	"/Library/Fonts/Arial.ttf",
+	// Windows (Docker Desktop / WSL path)
+	"/mnt/c/Windows/Fonts/arial.ttf",
+}
+
+// findFont returns the first font file that exists, or empty string if none found.
+func findFont() string {
+	for _, p := range fontSearchPaths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
 
 // GenerateVideo creates a TikTok-format (9:16, 1080x1920) MP4 from product images.
 // It builds a slideshow via the FFmpeg concat demuxer, scales/pads to vertical
@@ -50,20 +78,26 @@ func GenerateVideo(cfg VideoConfig) error {
 		).
 		Filter("pad", ffmpeg.Args{"1080:1920:(ow-iw)/2:(oh-ih)/2"})
 
-	// Optional text overlay burned at bottom-centre
+	// Optional text overlay burned at bottom-centre.
+	// drawtext requires a font file; skip the filter if none is found to
+	// avoid exit-status-254 failures on minimal Docker images.
 	if cfg.OverlayText != "" {
-		videoStream = videoStream.Filter("drawtext", ffmpeg.Args{},
-			ffmpeg.KwArgs{
-				"text":       cfg.OverlayText,
-				"fontsize":   "52",
-				"fontcolor":  "white",
-				"x":          "(w-text_w)/2",
-				"y":          "h-200",
-				"box":        "1",
-				"boxcolor":   "black@0.5",
-				"boxborderw": "10",
-			},
-		)
+		if fontPath := findFont(); fontPath != "" {
+			videoStream = videoStream.Filter("drawtext", ffmpeg.Args{},
+				ffmpeg.KwArgs{
+					"fontfile":   fontPath,
+					"text":       cfg.OverlayText,
+					"fontsize":   "52",
+					"fontcolor":  "white",
+					"x":          "(w-text_w)/2",
+					"y":          "h-200",
+					"box":        "1",
+					"boxcolor":   "black@0.5",
+					"boxborderw": "10",
+				},
+			)
+		}
+		// If no font found, text overlay is silently skipped rather than crashing.
 	}
 
 	var output *ffmpeg.Stream
@@ -94,7 +128,15 @@ func GenerateVideo(cfg VideoConfig) error {
 		)
 	}
 
-	return output.OverWriteOutput().Run()
+	// Compile the ffmpeg command, capture stderr for diagnostics.
+	cmd := output.OverWriteOutput().Compile()
+
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ffmpeg failed: %w\nstderr: %s", err, stderrBuf.String())
+	}
+	return nil
 }
 
 // createImageListFile writes a temporary FFmpeg concat format text file.

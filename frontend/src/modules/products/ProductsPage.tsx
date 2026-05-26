@@ -37,7 +37,10 @@ export default function ProductsPage() {
   const fetchProducts = () => {
     setLoading(true)
     client.get('/products')
-      .then((res) => setProducts(Array.isArray(res.data) ? res.data : []))
+      .then((res) => {
+        const list = res.data?.data ?? res.data
+        setProducts(Array.isArray(list) ? list : [])
+      })
       .catch(() => setProducts([]))
       .finally(() => setLoading(false))
   }
@@ -55,7 +58,7 @@ export default function ProductsPage() {
       await client.post('/products', {
         name: form.name,
         price: parseFloat(form.price),
-        commissionRate: parseFloat(form.commissionRate),
+        commission_rate: parseFloat(form.commissionRate),
         category: form.category,
         description: form.description,
       })

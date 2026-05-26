@@ -59,7 +59,7 @@ export default function DashboardPage() {
     }).finally(() => setLoading(false))
   }, [])
 
-  const s = stats || { totalPosts: 0, totalViews: 0, avgEngagementRate: 0, totalBasketClicks: 0 }
+  const s = stats || { totalPosts: 0, totalViews: 0, totalLikes: 0, totalRevenue: 0, avgEngagementRate: 0 }
 
   return (
     <div className="space-y-6">
@@ -71,9 +71,9 @@ export default function DashboardPage() {
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard label="Total Posts" value={loading ? '...' : s.totalPosts} icon="📝" />
-        <StatCard label="Total Views" value={loading ? '...' : s.totalViews.toLocaleString()} icon="👁️" />
-        <StatCard label="Avg Engagement" value={loading ? '...' : `${Number(s.avgEngagementRate).toFixed(1)}%`} icon="💬" />
-        <StatCard label="Basket Clicks" value={loading ? '...' : s.totalBasketClicks.toLocaleString()} icon="🛒" />
+        <StatCard label="Total Views" value={loading ? '...' : (s.totalViews ?? 0).toLocaleString()} icon="👁️" />
+        <StatCard label="Avg Engagement" value={loading ? '...' : `${Number(s.avgEngagementRate ?? 0).toFixed(1)}%`} icon="💬" />
+        <StatCard label="Total Likes" value={loading ? '...' : (s.totalLikes ?? 0).toLocaleString()} icon="❤️" />
       </div>
 
       {/* Views Trend Chart */}
@@ -108,14 +108,14 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {topPosts.map((post) => (
-                  <tr key={post.id} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="py-3 font-medium text-gray-800">{post.title}</td>
-                    <td className="py-3 text-gray-600">{post.views.toLocaleString()}</td>
-                    <td className="py-3 text-gray-600">{post.likes.toLocaleString()}</td>
-                    <td className="py-3 text-gray-600">{Number(post.engagementRate).toFixed(1)}%</td>
+                {topPosts.map((tp) => (
+                  <tr key={tp.post?.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-3 font-medium text-gray-800">{tp.post?.title || tp.post?.caption || '(untitled)'}</td>
+                    <td className="py-3 text-gray-600">{(tp.views ?? 0).toLocaleString()}</td>
+                    <td className="py-3 text-gray-600">—</td>
+                    <td className="py-3 text-gray-600">—</td>
                     <td className="py-3">
-                      <StatusBadge status="published" />
+                      <StatusBadge status={tp.post?.status ?? 'draft'} />
                     </td>
                   </tr>
                 ))}

@@ -13,6 +13,11 @@ import (
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/models"
 )
 
+// SuggestCaptionRequest is the body for POST /api/posts/suggest-caption.
+type SuggestCaptionRequest struct {
+	ProductID string `json:"product_id"`
+}
+
 type Handler struct {
 	service *Service
 }
@@ -25,6 +30,7 @@ func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/", h.List)
 	r.Post("/", h.Create)
+	r.Post("/suggest-caption", h.SuggestCaption) // AI-assisted caption generation
 	r.Get("/{id}", h.GetByID)
 	r.Put("/{id}", h.Update)
 	r.Delete("/{id}", h.Delete)
@@ -187,6 +193,44 @@ func (h *Handler) Schedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, post)
+}
+
+// POST /api/posts/suggest-caption
+// Accepts { "product_id": "uuid" } and returns AI-generated Thai caption + hashtags.
+// The product is looked up from the user's own catalog; falls back to name-only
+// generation if the product is not found.
+func (h *Handler) SuggestCaption(w http.ResponseWriter, r *http.Request) {
+	_, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, models.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
+	var req SuggestCaptionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	// Try to load the product for richer caption context
+	var product *models.Product
+	if req.ProductID != "" {
+		if pid, err := uuid.Parse(req.ProductID); err == nil {
+			product, _ = h.service.GetProductByID(r.Context(), pid) // nil-safe
+		}
+	}
+
+	if product == nil {
+		// Return minimal placeholder when product not found
+		writeJSON(w, http.StatusOK, SuggestCaptionResponse{
+			Caption:  "สินค้าดีมาแล้ว! 🔥 กดสั่งได้ที่ตะกร้าข้างล่างเลยนะ",
+			Hashtags: []string{"tiktokshopthailand", "สินค้าแนะนำ", "ของดีราคาถูก"},
+		})
+		return
+	}
+
+	result := GenerateCaption(product)
+	writeJSON(w, http.StatusOK, result)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
