@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -10,28 +9,40 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/middleware"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/cache"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/config"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/db"
+	apimiddleware "github.com/Pathapongoo11/tiktok-affiliate-platform/api/middleware"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/auth"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/dashboard"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/posts"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/products"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/tiktok"
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/videos"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	cfg := config.Load()
+	ctx := context.Background()
+
+	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("DB connection failed: %v", err)
+	}
+	defer pool.Close()
+
+	redisClient := cache.NewRedis(cfg.RedisURL)
+	ristrettoCache, err := cache.NewRistretto()
+	if err != nil {
+		log.Fatalf("Cache init failed: %v", err)
 	}
 
-	dbURL := os.Getenv("DATABASE_URL")
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "change-me-in-production"
-	}
+	// Uploads directory for generated videos and images
 	uploadsDir := os.Getenv("UPLOADS_DIR")
 	if uploadsDir == "" {
 		uploadsDir = "./uploads"
 	}
-
 	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
 		log.Fatalf("create uploads dir: %v", err)
 	}
@@ -39,50 +50,69 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
-	r.Use(middleware.CORS())
+	r.Use(apimiddleware.CORS())
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "ok",
-			"service": "tiktok-affiliate-api",
+		w.Write([]byte(`{"status":"ok","service":"tiktok-affiliate-api"}`))
+	})
+
+	r.Route("/api", func(r chi.Router) {
+		// ── Auth (public) ──────────────────────────────────────────────
+		authSvc := auth.NewService(auth.NewRepository(pool), cfg.JWTSecret)
+		authHandler := auth.NewHandler(authSvc)
+
+		r.Group(func(r chi.Router) {
+			r.Post("/auth/register", authHandler.Register)
+			r.Post("/auth/login", authHandler.Login)
+		})
+
+		// ── Protected routes (JWT required) ───────────────────────────
+		r.Group(func(r chi.Router) {
+			r.Use(apimiddleware.JWT(cfg.JWTSecret))
+
+			r.Get("/auth/me", authHandler.Me)
+
+			// Products
+			productsHandler := products.NewHandler(
+				products.NewService(products.NewRepository(pool), ristrettoCache),
+			)
+			r.Mount("/products", productsHandler.Routes())
+
+			// Posts
+			postsHandler := posts.NewHandler(posts.NewService(posts.NewRepository(pool)))
+			r.Mount("/posts", postsHandler.Routes())
+
+			// Dashboard
+			dashboardHandler := dashboard.NewHandler(dashboard.NewService(pool, redisClient))
+			r.Mount("/dashboard", dashboardHandler.Routes())
+
+			// TikTok integration
+			tiktokClient := tiktok.NewClient(cfg)
+			tiktokRepo := tiktok.NewRepository(pool)
+			tiktokHandler := tiktok.NewHandler(tiktokClient, tiktokRepo)
+			r.Mount("/tiktok", tiktokHandler.Routes())
+
+			// Video engine
+			videoSvc := videos.NewService(pool, uploadsDir)
+			videoHandler := videos.NewHandler(videoSvc, uploadsDir)
+			r.Mount("/videos", videoHandler.Routes())
 		})
 	})
 
-	// Protected routes require a valid JWT
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.JWT(jwtSecret))
+	// ── Background workers ──────────────────────────────────────────────
+	// TikTok post scheduler: picks up scheduled posts and publishes them
+	tiktokClient := tiktok.NewClient(cfg)
+	scheduler := tiktok.NewScheduler(pool, tiktokClient)
+	go scheduler.Start(ctx)
 
-		if dbURL != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+	// Video stall-recovery worker: marks stuck "processing" jobs as failed
+	videoWorker := videos.NewWorker(pool, 30*time.Second)
+	videoWorker.Start(ctx)
+	defer videoWorker.Stop()
 
-			pool, err := pgxpool.New(ctx, dbURL)
-			if err != nil {
-				log.Fatalf("connect to database: %v", err)
-			}
-			defer pool.Close()
-
-			if err := pool.Ping(ctx); err != nil {
-				log.Fatalf("ping database: %v", err)
-			}
-
-			// --- Video Engine ---
-			videoService := videos.NewService(pool, uploadsDir)
-			videoHandler := videos.NewHandler(videoService, uploadsDir)
-			r.Mount("/api/videos", videoHandler.Routes())
-
-			// Start stall-recovery worker
-			videoWorker := videos.NewWorker(pool, 30*time.Second)
-			videoWorker.Start(context.Background())
-			defer videoWorker.Stop()
-		} else {
-			log.Println("WARNING: DATABASE_URL not set — /api/videos routes are disabled")
-		}
-	})
-
-	log.Printf("API server starting on port %s", port)
-	if err := http.ListenAndServe(":"+port, r); err != nil {
+	log.Printf("API server starting on :%s (env: %s)", cfg.Port, cfg.Env)
+	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {
 		log.Fatal(err)
 	}
 }
