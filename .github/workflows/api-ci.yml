@@ -22,16 +22,20 @@ jobs:
           cache: true
           cache-dependency-path: api/go.sum
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          working-directory: api
-          args: >
-            --timeout=5m
-            --go=1.23
+      # Install golangci-lint from source so it is compiled with the same
+      # Go 1.26 toolchain as the project.  Pre-built binaries (v1.64.8) were
+      # compiled with Go 1.24, which refuses to typecheck packages that
+      # declare `go 1.25` in their own go.mod (redis, ristretto, pgx, chi).
+      - name: Install golangci-lint (built with Go 1.26)
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+
+      - name: Run golangci-lint
+        working-directory: api
+        run: |
+          golangci-lint run \
+            --out-format=github-actions \
+            --timeout=5m \
             --enable=govet,errcheck,staticcheck,unused,gosimple,ineffassign,typecheck,gocyclo,misspell,unconvert,gocritic
-          only-new-issues: false
 
   # ─── 2. Unit Tests + Coverage ────────────────────────────────────────
   test:
