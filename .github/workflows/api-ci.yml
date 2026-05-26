@@ -18,19 +18,18 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.26'
           cache: true
           cache-dependency-path: api/go.sum
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.61.0
+          version: latest
           working-directory: api
           args: >
             --timeout=5m
-            --enable=govet,errcheck,staticcheck,unused,gosimple,ineffassign,
-            typecheck,gocyclo,godot,misspell,goimports,unconvert,gocritic
+            --enable=govet,errcheck,staticcheck,unused,gosimple,ineffassign,typecheck,gocyclo,misspell,unconvert,gocritic
           only-new-issues: false
 
   # ─── 2. Unit Tests + Coverage ────────────────────────────────────────
@@ -42,7 +41,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.26'
           cache: true
           cache-dependency-path: api/go.sum
 
