@@ -13,6 +13,7 @@ export default function VideoStudioPage() {
   const [job, setJob] = useState<VideoJob | null>(null)
   const [polling, setPolling] = useState(false)
   const [error, setError] = useState('')
+  const [videoError, setVideoError] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -71,6 +72,7 @@ export default function VideoStudioPage() {
       return
     }
     setError('')
+    setVideoError('')
     setJob(null)
     setPolling(true)
     try {
@@ -258,11 +260,32 @@ export default function VideoStudioPage() {
               <>
                 <div className="bg-gray-900 rounded-xl overflow-hidden">
                   <video
+                    key={job.outputPath}
                     src={job.outputPath}
                     controls
-                    className="w-full max-h-80 object-contain"
+                    autoPlay
+                    playsInline
+                    className="w-full max-h-96 object-contain"
+                    onError={() => setVideoError(
+                      `Cannot load video from ${job.outputPath} — make sure the API server is running and the file was generated successfully.`
+                    )}
+                    onLoadedData={() => setVideoError('')}
                   />
                 </div>
+                {videoError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                    <p className="font-medium">Video load failed</p>
+                    <p className="mt-1 text-xs break-all">{videoError}</p>
+                    <a
+                      href={job.outputPath}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-block text-blue-600 underline text-xs"
+                    >
+                      Try opening directly ↗
+                    </a>
+                  </div>
+                )}
                 <button
                   onClick={handleDownload}
                   className="w-full py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"

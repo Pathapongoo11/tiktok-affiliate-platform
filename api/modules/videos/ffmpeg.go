@@ -111,6 +111,7 @@ func GenerateVideo(cfg VideoConfig) error {
 			ffmpeg.KwArgs{
 				"c:v":      "libx264",
 				"pix_fmt":  "yuv420p",
+				"movflags": "+faststart", // MOOV atom at start → browser can play without full download
 				"c:a":      "aac",
 				"b:a":      "128k",
 				"shortest": "",
@@ -121,9 +122,10 @@ func GenerateVideo(cfg VideoConfig) error {
 		output = videoStream.Output(
 			cfg.OutputPath,
 			ffmpeg.KwArgs{
-				"c:v":     "libx264",
-				"pix_fmt": "yuv420p",
-				"t":       fmt.Sprintf("%d", cfg.DurationSec),
+				"c:v":       "libx264",
+				"pix_fmt":   "yuv420p",
+				"movflags":  "+faststart", // MOOV atom at start → browser can play without full download
+				"t":         fmt.Sprintf("%d", cfg.DurationSec),
 			},
 		)
 	}
