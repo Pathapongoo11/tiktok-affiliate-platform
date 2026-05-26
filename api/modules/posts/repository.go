@@ -143,6 +143,36 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return nil
 }
 
+// GetProductByID fetches a product by ID for caption generation.
+// Returns nil, nil when not found.
+func (r *Repository) GetProductByID(ctx context.Context, id uuid.UUID) (*models.Product, error) {
+	query := `
+		SELECT id, user_id, name, description, price, commission_rate, category,
+		       shop_product_id, image_urls, score, is_active, created_at, updated_at
+		FROM products
+		WHERE id = $1
+	`
+	row := r.pool.QueryRow(ctx, query, id)
+
+	p := &models.Product{}
+	var imageURLsJSON []byte
+	err := row.Scan(
+		&p.ID, &p.UserID, &p.Name, &p.Description, &p.Price, &p.CommissionRate,
+		&p.Category, &p.ShopProductID, &imageURLsJSON, &p.Score, &p.IsActive,
+		&p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if len(imageURLsJSON) > 0 {
+		_ = json.Unmarshal(imageURLsJSON, &p.ImageURLs)
+	}
+	return p, nil
+}
+
 type postScanner interface {
 	Scan(dest ...interface{}) error
 }

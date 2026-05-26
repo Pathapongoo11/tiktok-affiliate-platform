@@ -22,6 +22,8 @@ export default function ContentEditor() {
   const [scheduledAt, setScheduledAt] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [suggestingCaption, setSuggestingCaption] = useState(false)
+  const [captionAI, setCaptionAI] = useState(false) // true = caption was AI-generated
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -31,6 +33,37 @@ export default function ContentEditor() {
     })
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
+
+  // ── AI Caption generation ────────────────────────────────────────────
+
+  const suggestCaption = async (product: Product) => {
+    setSuggestingCaption(true)
+    try {
+      const res = await client.post('/posts/suggest-caption', {
+        product_id: product.id,
+      })
+      setCaption(res.data.caption || '')
+      setHashtags(Array.isArray(res.data.hashtags) ? res.data.hashtags : [])
+      setCaptionAI(true)
+    } catch {
+      // Non-fatal — user can type manually
+    } finally {
+      setSuggestingCaption(false)
+    }
+  }
+
+  // ── Step navigation ──────────────────────────────────────────────────
+
+  const goToStep = async (targetStep: number) => {
+    setError('')
+    // Auto-generate caption when entering step 1 for the first time
+    if (targetStep === 1 && step === 0 && selectedProduct && !captionAI) {
+      await suggestCaption(selectedProduct)
+    }
+    setStep(targetStep)
+  }
+
+  // ── Image upload ─────────────────────────────────────────────────────
 
   const onDrop = useCallback(async (files: File[]) => {
     setUploading(true)
@@ -59,6 +92,8 @@ export default function ContentEditor() {
     multiple: true,
   })
 
+  // ── Video generation ─────────────────────────────────────────────────
+
   const generateVideo = async () => {
     if (uploadedPaths.length === 0) {
       setError('Please upload at least one image.')
@@ -84,6 +119,9 @@ export default function ContentEditor() {
           if (j.status === 'done' || j.status === 'failed') {
             clearInterval(pollRef.current!)
             setPolling(false)
+            if (j.status === 'failed') {
+              setError(`Video generation failed: ${j.errorMessage || 'unknown error'}`)
+            }
           }
         } catch {
           clearInterval(pollRef.current!)
@@ -97,6 +135,8 @@ export default function ContentEditor() {
     }
   }
 
+  // ── Hashtag helpers ───────────────────────────────────────────────────
+
   const addHashtag = () => {
     const tag = hashtagInput.trim().replace(/^#/, '')
     if (tag && !hashtags.includes(tag)) {
@@ -106,6 +146,8 @@ export default function ContentEditor() {
   }
 
   const removeHashtag = (tag: string) => setHashtags(hashtags.filter((t) => t !== tag))
+
+  // ── Post creation & scheduling ────────────────────────────────────────
 
   const handleSchedule = async (postNow: boolean) => {
     setError('')
@@ -119,14 +161,22 @@ export default function ContentEditor() {
         product_id: selectedProduct?.id,
       })
       const postId = postRes.data.id || postRes.data.postId
+      if (!postId) throw new Error('No post ID returned from server')
+
       if (postNow) {
-        await client.post(`/posts/${postId}/schedule`, { scheduled_at: new Date().toISOString() })
+        await client.post(`/posts/${postId}/schedule`, {
+          scheduled_at: new Date().toISOString(),
+        })
       } else if (scheduledAt) {
-        await client.post(`/posts/${postId}/schedule`, { scheduled_at: scheduledAt })
+        await client.post(`/posts/${postId}/schedule`, {
+          scheduled_at: scheduledAt,
+        })
       }
       navigate('/posts')
-    } catch {
-      setError('Failed to save post. Please try again.')
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } }; message?: string }
+      const msg = axiosErr.response?.data?.error || axiosErr.message || 'Unknown error'
+      setError(`Failed to save post: ${msg}`)
       setSubmitting(false)
     }
   }
@@ -143,6 +193,8 @@ export default function ContentEditor() {
     if (step === 2) return job !== null || uploadedPaths.length > 0
     return true
   }
+
+  // ── Render ────────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -177,7 +229,8 @@ export default function ContentEditor() {
       )}
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
-        {/* Step 1: Select Product */}
+
+        {/* ── Step 1: Select Product ── */}
         {step === 0 && (
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-800">Select Product</h3>
@@ -186,6 +239,7 @@ export default function ContentEditor() {
               onChange={(e) => {
                 const p = products.find((pr) => pr.id === e.target.value) || null
                 setSelectedProduct(p)
+                setCaptionAI(false) // reset AI caption when product changes
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             >
@@ -204,23 +258,54 @@ export default function ContentEditor() {
                 <p className="text-sm text-purple-600">Score: {selectedProduct.score}/100</p>
               </div>
             )}
+            {selectedProduct && (
+              <p className="text-xs text-gray-400 flex items-center gap-1">
+                🤖 <span>AI will auto-generate Thai caption & hashtags for this product in the next step</span>
+              </p>
+            )}
           </div>
         )}
 
-        {/* Step 2: Caption & Hashtags */}
+        {/* ── Step 2: Caption & Hashtags ── */}
         {step === 1 && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-gray-800">Write Caption & Hashtags</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800">Caption & Hashtags</h3>
+              <div className="flex items-center gap-2">
+                {captionAI && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                    🤖 AI สร้างให้
+                  </span>
+                )}
+                <button
+                  onClick={() => selectedProduct && suggestCaption(selectedProduct)}
+                  disabled={suggestingCaption || !selectedProduct}
+                  className="text-xs text-purple-600 hover:text-purple-800 underline disabled:opacity-50"
+                >
+                  {suggestingCaption ? '⏳ กำลังสร้าง...' : '🔄 สร้างใหม่'}
+                </button>
+              </div>
+            </div>
+
+            {suggestingCaption && (
+              <div className="flex items-center gap-2 text-sm text-purple-600 py-2">
+                <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                AI กำลังสร้าง caption ให้อัตโนมัติ...
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Caption</label>
               <textarea
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
                 placeholder="Write your TikTok caption here..."
-                rows={5}
+                rows={6}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
               />
+              <p className="text-xs text-gray-400 mt-1">{caption.length} characters · Edit as needed</p>
             </div>
+
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">Hashtags</label>
               <div className="flex gap-2">
@@ -260,7 +345,7 @@ export default function ContentEditor() {
           </div>
         )}
 
-        {/* Step 3: Generate Video */}
+        {/* ── Step 3: Generate Video ── */}
         {step === 2 && (
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-800">Generate Video</h3>
@@ -275,7 +360,7 @@ export default function ContentEditor() {
               <p className="text-gray-600 font-medium">
                 {isDragActive ? 'Drop images here...' : 'Drag & drop product images'}
               </p>
-              <p className="text-sm text-gray-400 mt-1">or click to browse • Multiple images supported</p>
+              <p className="text-sm text-gray-400 mt-1">or click to browse · JPG, PNG, WebP</p>
             </div>
 
             {uploading && <p className="text-sm text-purple-600 text-center">Uploading images...</p>}
@@ -304,7 +389,7 @@ export default function ContentEditor() {
                     job.status === 'failed' ? 'text-red-700' :
                     'text-blue-700'
                   }`}>
-                    Video {job.status === 'done' ? 'ready!' : job.status === 'failed' ? 'failed' : 'processing...'}
+                    Video {job.status === 'done' ? 'ready!' : job.status === 'failed' ? 'generation failed' : 'processing...'}
                   </p>
                 </div>
                 {job.errorMessage && <p className="text-xs text-red-600 mt-1">{job.errorMessage}</p>}
@@ -318,10 +403,16 @@ export default function ContentEditor() {
             >
               {polling ? 'Generating...' : job?.status === 'done' ? '✅ Video Ready!' : '🎬 Generate Video'}
             </button>
+
+            {job?.status === 'failed' && (
+              <p className="text-xs text-gray-500 text-center">
+                Video failed — you can still proceed to schedule a post without a video.
+              </p>
+            )}
           </div>
         )}
 
-        {/* Step 4: Preview */}
+        {/* ── Step 4: Preview ── */}
         {step === 3 && (
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-800">Preview</h3>
@@ -336,12 +427,12 @@ export default function ContentEditor() {
             ) : (
               <div className="bg-gray-100 rounded-xl p-8 text-center text-gray-400">
                 <div className="text-4xl mb-2">🎬</div>
-                <p>No video generated yet</p>
+                <p>{job?.status === 'failed' ? 'Video failed — post will be saved without video' : 'No video generated yet'}</p>
               </div>
             )}
             <div className="bg-gray-50 rounded-lg p-4 space-y-2">
               <p className="text-sm font-medium text-gray-700">Caption:</p>
-              <p className="text-sm text-gray-600">{caption || 'No caption'}</p>
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">{caption || 'No caption'}</p>
               {hashtags.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-1">
                   {hashtags.map((tag) => (
@@ -353,18 +444,18 @@ export default function ContentEditor() {
             {selectedProduct && (
               <div className="bg-purple-50 rounded-lg p-3">
                 <p className="text-sm font-medium text-purple-800">Product: {selectedProduct.name}</p>
-                <p className="text-xs text-purple-600">฿{selectedProduct.price} • {selectedProduct.commissionRate}% commission</p>
+                <p className="text-xs text-purple-600">฿{selectedProduct.price} · {selectedProduct.commissionRate}% commission</p>
               </div>
             )}
           </div>
         )}
 
-        {/* Step 5: Schedule */}
+        {/* ── Step 5: Schedule ── */}
         {step === 4 && (
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-800">Schedule Post</h3>
             <div>
-              <p className="text-sm font-medium text-gray-700 mb-2">Suggested times (ICT — best Thai posting times):</p>
+              <p className="text-sm font-medium text-gray-700 mb-2">Suggested times (ICT — best Thai TikTok posting times):</p>
               <div className="flex gap-2 flex-wrap">
                 {SUGGESTED_TIMES.map((t) => (
                   <button
@@ -399,7 +490,7 @@ export default function ContentEditor() {
                 disabled={submitting}
                 className="flex-1 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
               >
-                {submitting ? 'Posting...' : 'Post Now'}
+                {submitting ? 'Posting...' : '🚀 Post Now'}
               </button>
             </div>
           </div>
@@ -416,11 +507,16 @@ export default function ContentEditor() {
         </button>
         {step < STEPS.length - 1 && (
           <button
-            onClick={() => { setError(''); setStep(step + 1) }}
-            disabled={!canAdvance()}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            onClick={() => goToStep(step + 1)}
+            disabled={!canAdvance() || suggestingCaption}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
           >
-            Next →
+            {suggestingCaption && step === 0 ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                AI กำลังสร้าง...
+              </>
+            ) : 'Next →'}
           </button>
         )}
       </div>

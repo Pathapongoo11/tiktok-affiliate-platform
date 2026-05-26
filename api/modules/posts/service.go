@@ -18,6 +18,7 @@ type PostRepository interface {
 	Update(ctx context.Context, p *models.Post) error
 	Schedule(ctx context.Context, id, userID uuid.UUID, req models.SchedulePostRequest) error
 	Delete(ctx context.Context, id, userID uuid.UUID) error
+	GetProductByID(ctx context.Context, id uuid.UUID) (*models.Product, error)
 }
 
 type Service struct {
@@ -95,4 +96,10 @@ func (s *Service) Schedule(ctx context.Context, id, userID uuid.UUID, req models
 
 func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.Delete(ctx, id, userID)
+}
+
+// GetProductByID returns a product by ID for use in caption generation.
+// Returns nil, nil if not found.
+func (s *Service) GetProductByID(ctx context.Context, id uuid.UUID) (*models.Product, error) {
+	return s.repo.GetProductByID(ctx, id)
 }

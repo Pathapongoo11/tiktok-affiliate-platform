@@ -66,6 +66,14 @@ func (m *mockPostRepo) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return args.Error(0)
 }
 
+func (m *mockPostRepo) GetProductByID(ctx context.Context, id uuid.UUID) (*models.Product, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Product), args.Error(1)
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -248,5 +256,35 @@ func TestDeletePost_Success(t *testing.T) {
 	err := svc.Delete(context.Background(), postID, userID)
 
 	assert.NoError(t, err)
+	repo.AssertExpectations(t)
+}
+
+func TestGetProductByID_Found(t *testing.T) {
+	repo := new(mockPostRepo)
+	svc := posts.NewService(repo)
+
+	prodID := uuid.New()
+	expected := &models.Product{ID: prodID, Name: "Serum X", Price: 499, Category: "Beauty"}
+	repo.On("GetProductByID", mock.Anything, prodID).Return(expected, nil)
+
+	result, err := svc.GetProductByID(context.Background(), prodID)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, "Serum X", result.Name)
+	repo.AssertExpectations(t)
+}
+
+func TestGetProductByID_NotFound(t *testing.T) {
+	repo := new(mockPostRepo)
+	svc := posts.NewService(repo)
+
+	prodID := uuid.New()
+	repo.On("GetProductByID", mock.Anything, prodID).Return(nil, nil)
+
+	result, err := svc.GetProductByID(context.Background(), prodID)
+
+	assert.NoError(t, err)
+	assert.Nil(t, result)
 	repo.AssertExpectations(t)
 }
