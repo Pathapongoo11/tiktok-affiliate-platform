@@ -13,17 +13,25 @@ import (
 )
 
 var (
-	ErrEmailTaken     = errors.New("email already registered")
-	ErrInvalidCreds   = errors.New("invalid email or password")
-	ErrUserNotFound   = errors.New("user not found")
+	ErrEmailTaken   = errors.New("email already registered")
+	ErrInvalidCreds = errors.New("invalid email or password")
+	ErrUserNotFound = errors.New("user not found")
 )
 
+// UserRepository defines the persistence interface used by Service.
+// The concrete *Repository satisfies this interface.
+type UserRepository interface {
+	CreateUser(ctx context.Context, user *models.User) error
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error)
+}
+
 type Service struct {
-	repo      *Repository
+	repo      UserRepository
 	jwtSecret string
 }
 
-func NewService(repo *Repository, jwtSecret string) *Service {
+func NewService(repo UserRepository, jwtSecret string) *Service {
 	return &Service{repo: repo, jwtSecret: jwtSecret}
 }
 
