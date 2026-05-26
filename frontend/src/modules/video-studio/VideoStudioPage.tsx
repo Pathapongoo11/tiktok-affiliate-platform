@@ -15,31 +15,82 @@ export default function VideoStudioPage() {
   const [error, setError] = useState('')
   const [videoError, setVideoError] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Ref so onDropImages (useCallback with [] deps) can call the latest startGeneration
+  const autoGenRef = useRef<(paths: string[]) => void>(() => {})
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
+  // Core generation logic with explicit paths — called from both auto and manual triggers
+  const startGeneration = useCallback(async (paths: string[]) => {
+    if (paths.length === 0 || polling) return
+    setError('')
+    setVideoError('')
+    setJob(null)
+    setPolling(true)
+    try {
+      const payload: Record<string, unknown> = {
+        input_images: paths,
+        overlay_text: overlayText,
+        duration_seconds: duration,
+      }
+      if (audioPath) payload.audio_path = audioPath
+      const res = await client.post('/videos/generate', payload)
+      const jobId = res.data.id || res.data.jobId
+      pollRef.current = setInterval(async () => {
+        try {
+          const jobRes = await client.get(`/videos/${jobId}`)
+          const j: VideoJob = jobRes.data
+          setJob(j)
+          if (j.status === 'done' || j.status === 'failed') {
+            clearInterval(pollRef.current!)
+            setPolling(false)
+          }
+        } catch {
+          clearInterval(pollRef.current!)
+          setPolling(false)
+          setError('Polling failed.')
+        }
+      }, 3000)
+    } catch {
+      setPolling(false)
+      setError('Failed to start video generation.')
+    }
+  }, [overlayText, duration, audioPath, polling]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep autoGenRef pointing at the latest startGeneration
+  useEffect(() => {
+    autoGenRef.current = (paths: string[]) => {
+      if (!polling) startGeneration(paths)
+    }
+  }) // intentionally runs every render
+
   const onDropImages = useCallback(async (files: File[]) => {
     setUploading(true)
     setError('')
     try {
-      const paths: string[] = []
+      const newPaths: string[] = []
       for (const file of files) {
         const fd = new FormData()
         fd.append('image', file)
         const res = await client.post('/videos/upload', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
-        paths.push(res.data.path || res.data.filePath || res.data.url)
+        newPaths.push(res.data.path || res.data.filePath || res.data.url)
       }
-      setUploadedPaths((prev) => [...prev, ...paths])
+      setUploadedPaths((prev) => {
+        const all = [...prev, ...newPaths]
+        // Auto-generate immediately after upload — use ref to access latest startGeneration
+        setTimeout(() => autoGenRef.current(all), 0)
+        return all
+      })
     } catch {
       setError('Image upload failed.')
     } finally {
       setUploading(false)
     }
-  }, [])
+  }, []) // deps intentionally empty — uses autoGenRef
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: onDropImages,
@@ -66,44 +117,8 @@ export default function VideoStudioPage() {
     }
   }
 
-  const generateVideo = async () => {
-    if (uploadedPaths.length === 0) {
-      setError('Please upload at least one image.')
-      return
-    }
-    setError('')
-    setVideoError('')
-    setJob(null)
-    setPolling(true)
-    try {
-      const payload: Record<string, unknown> = {
-        input_images: uploadedPaths,
-        overlay_text: overlayText,
-        duration_seconds: duration,
-      }
-      if (audioPath) payload.audio_path = audioPath
-      const res = await client.post('/videos/generate', payload)
-      const jobId = res.data.id || res.data.jobId
-      pollRef.current = setInterval(async () => {
-        try {
-          const jobRes = await client.get(`/videos/${jobId}`)
-          const j: VideoJob = jobRes.data
-          setJob(j)
-          if (j.status === 'done' || j.status === 'failed') {
-            clearInterval(pollRef.current!)
-            setPolling(false)
-          }
-        } catch {
-          clearInterval(pollRef.current!)
-          setPolling(false)
-          setError('Polling failed.')
-        }
-      }, 3000)
-    } catch {
-      setPolling(false)
-      setError('Failed to start video generation.')
-    }
-  }
+  // Manual "Generate Video" button (re-generate or generate when auto didn't fire)
+  const generateVideo = () => startGeneration(uploadedPaths)
 
   const handleDownload = () => {
     if (!job?.outputPath) return
@@ -141,7 +156,7 @@ export default function VideoStudioPage() {
             <p className="text-gray-600 font-medium">
               {isDragActive ? 'Drop images here...' : 'Drag & drop images'}
             </p>
-            <p className="text-sm text-gray-400 mt-1">JPG, PNG, WebP • Multiple files supported</p>
+            <p className="text-sm text-gray-400 mt-1">JPG, PNG, WebP • Video generates automatically after upload</p>
           </div>
 
           {uploading && (
@@ -235,7 +250,7 @@ export default function VideoStudioPage() {
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               Generating Video...
             </>
-          ) : '🎬 Generate Video'}
+          ) : job?.status === 'done' ? '🔄 Re-generate Video' : '🎬 Generate Video'}
         </button>
 
         {/* Job Status */}
