@@ -3,10 +3,11 @@ package videos
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
-
-	ffmpeg "github.com/u2takey/ffmpeg-go"
+	"strings"
 )
 
 // fontSearchPaths lists common font locations across OS and Docker images.
@@ -39,6 +40,9 @@ func findFont() string {
 // GenerateVideo creates a TikTok-format (9:16, 1080x1920) MP4 from product images.
 // It builds a slideshow via the FFmpeg concat demuxer, scales/pads to vertical
 // format, optionally burns a text overlay, and optionally mixes background audio.
+//
+// Uses exec.Command("ffmpeg", ...) directly with -vf for a simpler, more reliable
+// command than the ffmpeg-go filter_complex builder.
 func GenerateVideo(cfg VideoConfig) error {
 	if len(cfg.InputImages) == 0 {
 		return fmt.Errorf("no input images provided")
@@ -62,81 +66,66 @@ func GenerateVideo(cfg VideoConfig) error {
 	}
 	defer os.Remove(listFile)
 
-	// Base video stream: read images via concat demuxer
-	videoInput := ffmpeg.Input(listFile,
-		ffmpeg.KwArgs{
-			"f":    "concat",
-			"safe": "0",
-			"r":    fmt.Sprintf("%d", cfg.FPS),
-		},
-	)
+	// ── Video filter chain ──────────────────────────────────────────────────
+	// scale: fit inside 1080×1920 preserving aspect ratio
+	// pad:   fill remaining space with black bars (letterbox/pillarbox)
+	vf := "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2"
 
-	// Scale to 1080x1920 (9:16 TikTok vertical) then pad to exact dimensions
-	videoStream := videoInput.
-		Filter("scale", ffmpeg.Args{"1080:1920"},
-			ffmpeg.KwArgs{"force_original_aspect_ratio": "decrease"},
-		).
-		Filter("pad", ffmpeg.Args{"1080:1920:(ow-iw)/2:(oh-ih)/2"})
-
-	// Optional text overlay burned at bottom-centre.
-	// drawtext requires a font file; skip the filter if none is found to
-	// avoid exit-status-254 failures on minimal Docker images.
+	// Optional drawtext overlay — only if a font file is present on disk.
+	// Skipped silently when no font is found so the video still generates.
 	if cfg.OverlayText != "" {
 		if fontPath := findFont(); fontPath != "" {
-			videoStream = videoStream.Filter("drawtext", ffmpeg.Args{},
-				ffmpeg.KwArgs{
-					"fontfile":   fontPath,
-					"text":       cfg.OverlayText,
-					"fontsize":   "52",
-					"fontcolor":  "white",
-					"x":          "(w-text_w)/2",
-					"y":          "h-200",
-					"box":        "1",
-					"boxcolor":   "black@0.5",
-					"boxborderw": "10",
-				},
+			// Escape characters that are special in FFmpeg filter strings
+			safeText := strings.ReplaceAll(cfg.OverlayText, "\\", "\\\\")
+			safeText = strings.ReplaceAll(safeText, ":", "\\:")
+			safeText = strings.ReplaceAll(safeText, "'", "\\'")
+			vf += fmt.Sprintf(
+				",drawtext=fontfile='%s':text='%s':fontsize=52:fontcolor=white"+
+					":x=(w-text_w)/2:y=h-200:box=1:boxcolor=black@0.5:boxborderw=10",
+				fontPath, safeText,
 			)
 		}
-		// If no font found, text overlay is silently skipped rather than crashing.
+		// No font found — text overlay silently skipped rather than crashing.
 	}
 
-	var output *ffmpeg.Stream
+	// ── Build FFmpeg argument list ──────────────────────────────────────────
+	args := []string{
+		// Input: image slideshow via concat demuxer
+		"-f", "concat",
+		"-safe", "0",
+		"-i", listFile,
+	}
 
 	if cfg.AudioPath != "" {
-		// Mix video + audio; -shortest stops at whichever track ends first
-		audioInput := ffmpeg.Input(cfg.AudioPath)
-		output = ffmpeg.Output(
-			[]*ffmpeg.Stream{videoStream, audioInput},
-			cfg.OutputPath,
-			ffmpeg.KwArgs{
-				"c:v":      "libx264",
-				"pix_fmt":  "yuv420p",
-				"movflags": "+faststart", // MOOV atom at start → browser can play without full download
-				"c:a":      "aac",
-				"b:a":      "128k",
-				"shortest": "",
-				"t":        fmt.Sprintf("%d", cfg.DurationSec),
-			},
-		)
-	} else {
-		output = videoStream.Output(
-			cfg.OutputPath,
-			ffmpeg.KwArgs{
-				"c:v":       "libx264",
-				"pix_fmt":   "yuv420p",
-				"movflags":  "+faststart", // MOOV atom at start → browser can play without full download
-				"t":         fmt.Sprintf("%d", cfg.DurationSec),
-			},
-		)
+		args = append(args, "-i", cfg.AudioPath)
 	}
 
-	// Compile the ffmpeg command, capture stderr for diagnostics.
-	cmd := output.OverWriteOutput().Compile()
+	args = append(args,
+		"-vf", vf,
+		"-c:v", "libx264",
+		"-preset", "fast",
+		"-pix_fmt", "yuv420p",
+		"-movflags", "+faststart", // MOOV at start → browser can play without full download
+		"-t", fmt.Sprintf("%d", cfg.DurationSec),
+	)
 
+	if cfg.AudioPath != "" {
+		args = append(args, "-c:a", "aac", "-b:a", "128k", "-shortest")
+	} else {
+		args = append(args, "-an") // no audio stream in output
+	}
+
+	args = append(args, "-y", cfg.OutputPath) // -y = overwrite
+
+	// ── Execute ─────────────────────────────────────────────────────────────
+	log.Printf("[video] ffmpeg %s", strings.Join(args, " "))
+
+	cmd := exec.Command("ffmpeg", args...)
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
+
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ffmpeg failed: %w\nstderr: %s", err, stderrBuf.String())
+		return fmt.Errorf("ffmpeg failed (exit: %v)\nstderr:\n%s", err, stderrBuf.String())
 	}
 	return nil
 }
