@@ -23,7 +23,7 @@ func JWT(secret string) func(http.Handler) http.Handler {
 			}
 
 			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
 				http.Error(w, `{"error":"invalid authorization header format"}`, http.StatusUnauthorized)
 				return
 			}

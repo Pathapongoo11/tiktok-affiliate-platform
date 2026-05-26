@@ -139,7 +139,7 @@ func (h *Handler) uploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	imagesDir := filepath.Join(h.uploadsDir, "images")
-	if err := os.MkdirAll(imagesDir, 0755); err != nil {
+	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create uploads directory"})
 		return
 	}
@@ -169,5 +169,5 @@ func (h *Handler) uploadImage(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
