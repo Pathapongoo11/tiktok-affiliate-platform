@@ -139,14 +139,18 @@ func (r *Repository) GetDuePosts(ctx context.Context) ([]*models.Post, error) {
 	var posts []*models.Post
 	for rows.Next() {
 		p := &models.Post{}
+		var tikTokVideoID *string // nullable — scheduled posts haven't been published yet
 		err := rows.Scan(
 			&p.ID, &p.UserID, &p.TikTokAccountID, &p.ProductID,
 			&p.Title, &p.Caption, &p.Hashtags, &p.VideoPath,
-			&p.TikTokVideoID, &p.Status, &p.ScheduledAt, &p.PublishedAt,
+			&tikTokVideoID, &p.Status, &p.ScheduledAt, &p.PublishedAt,
 			&p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if tikTokVideoID != nil {
+			p.TikTokVideoID = *tikTokVideoID
 		}
 		posts = append(posts, p)
 	}
@@ -197,14 +201,18 @@ func (r *Repository) GetPublishedPostsForUser(ctx context.Context, userID uuid.U
 	var posts []*models.Post
 	for rows.Next() {
 		p := &models.Post{}
+		var tikTokVideoID *string // nullable — scan via pointer to handle NULL safely
 		err := rows.Scan(
 			&p.ID, &p.UserID, &p.TikTokAccountID, &p.ProductID,
 			&p.Title, &p.Caption, &p.Hashtags, &p.VideoPath,
-			&p.TikTokVideoID, &p.Status, &p.ScheduledAt, &p.PublishedAt,
+			&tikTokVideoID, &p.Status, &p.ScheduledAt, &p.PublishedAt,
 			&p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if tikTokVideoID != nil {
+			p.TikTokVideoID = *tikTokVideoID
 		}
 		posts = append(posts, p)
 	}

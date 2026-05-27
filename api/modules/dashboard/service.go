@@ -100,15 +100,21 @@ func (s *Service) GetTopPosts(ctx context.Context, userID uuid.UUID) ([]*models.
 	var result []*models.TopPost
 	for rows.Next() {
 		post := &models.Post{}
-		var views int64
+		var (
+			views         int64
+			tikTokVideoID *string // nullable — posts not yet published to TikTok have NULL
+		)
 		err := rows.Scan(
 			&post.ID, &post.UserID, &post.TikTokAccountID, &post.ProductID,
 			&post.Title, &post.Caption, &post.Hashtags, &post.VideoPath,
-			&post.TikTokVideoID, &post.Status, &post.ScheduledAt, &post.PublishedAt,
+			&tikTokVideoID, &post.Status, &post.ScheduledAt, &post.PublishedAt,
 			&post.CreatedAt, &post.UpdatedAt, &views,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if tikTokVideoID != nil {
+			post.TikTokVideoID = *tikTokVideoID
 		}
 		result = append(result, &models.TopPost{Post: post, Views: views})
 	}
