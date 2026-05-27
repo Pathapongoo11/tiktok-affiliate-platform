@@ -181,6 +181,7 @@ func (r *Repository) scanPostWithProduct(row postScanner) (*models.Post, error) 
 	p := &models.Post{}
 	pr := &models.Product{}
 	var (
+		tikTokVideoID   *string // nullable in DB — posts without a TikTok video ID are NULL
 		prID            *uuid.UUID
 		prUserID        *uuid.UUID
 		prName          *string
@@ -200,12 +201,15 @@ func (r *Repository) scanPostWithProduct(row postScanner) (*models.Post, error) 
 	err := row.Scan(
 		&p.ID, &p.UserID, &p.TikTokAccountID, &p.ProductID,
 		&p.Title, &p.Caption, &p.Hashtags, &p.VideoPath,
-		&p.TikTokVideoID, &p.Status, &p.ScheduledAt, &p.PublishedAt,
+		&tikTokVideoID, &p.Status, &p.ScheduledAt, &p.PublishedAt,
 		&p.CreatedAt, &p.UpdatedAt,
 		&prID, &prUserID, &prName, &prDesc, &prPrice, &prCommission,
 		&prCategory, &prShopID, &prImageURLsJSON, &prScore, &prIsActive,
 		&prCreatedAt, &prUpdatedAt,
 	)
+	if tikTokVideoID != nil {
+		p.TikTokVideoID = *tikTokVideoID
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
