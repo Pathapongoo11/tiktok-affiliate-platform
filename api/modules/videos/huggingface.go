@@ -10,25 +10,33 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 // Hugging Face Inference API endpoints and models.
 //
-// Both models run on the free Hugging Face Inference API. The first request to
-// a cold model returns HTTP 503 with an estimated load time; we retry until the
-// model is warm or the overall deadline elapses.
+// Runs on the free Hugging Face Inference API via the hf-inference provider.
+// The legacy api-inference.huggingface.co host was deprecated in 2025 in favour
+// of router.huggingface.co — see https://huggingface.co/docs/inference-providers
+//
+// NOTE: As of 2025 the free hf-inference provider no longer serves image→video
+// or image→image models (e.g. SVD, cartoonizer return "Model not supported by
+// provider hf-inference"). Only text→image models like FLUX.1-schnell remain
+// available on the free tier. So the cartoon pipeline is:
+//
+//	product image + caption → text prompt → FLUX cartoon image → FFmpeg Ken Burns
+//
+// The first request to a cold model returns HTTP 503 with an estimated load
+// time; we retry until the model is warm or the overall deadline elapses.
 const (
-	hfBaseURL = "https://api-inference.huggingface.co/models/"
+	hfBaseURL = "https://router.huggingface.co/hf-inference/models/"
 
-	// Image → animated video (realistic motion). Outputs MP4 bytes directly.
-	hfModelSVD = "stabilityai/stable-video-diffusion-img2vid-xt"
-
-	// Image → cartoon image (img2img). Used as step 1 of the ai_cartoon pipeline.
-	hfModelCartoonize = "instruction-tuning-sd/cartoonizer"
+	// Text → image (cartoon/illustration). The only style available free.
+	hfModelFlux = "black-forest-labs/FLUX.1-schnell"
 
 	hfPollInterval = 8 * time.Second
-	hfMaxWait      = 5 * time.Minute
+	hfMaxWait      = 4 * time.Minute
 )
 
 // hfClient wraps the HTTP client and token for Hugging Face requests.
@@ -44,13 +52,15 @@ func newHFClient(token string) *hfClient {
 	}
 }
 
-// GenerateAIVideo produces a video from the first input image using the
-// Hugging Face Inference API. The pipeline depends on cfg.AnimationStyle:
+// GenerateAIVideo produces an animated cartoon video using a two-stage pipeline:
 //
-//	StyleAIVideo   → SVD animates the photo directly
-//	StyleAICartoon → cartoonize the photo, then SVD animates the cartoon
+//  1. FLUX.1-schnell generates a cartoon image from a text prompt derived from
+//     the product (overlay text + style keywords).
+//  2. The existing FFmpeg animated pipeline (Ken Burns zoom) turns that cartoon
+//     image into a 9:16 MP4.
 //
-// Requires a non-empty token. The output is written to cfg.OutputPath as MP4.
+// Both StyleAIVideo and StyleAICartoon use this pipeline; the only difference is
+// the prompt style. Requires a non-empty token.
 func GenerateAIVideo(ctx context.Context, cfg VideoConfig, token string) error {
 	if token == "" {
 		return fmt.Errorf("huggingface token not configured")
@@ -64,62 +74,62 @@ func GenerateAIVideo(ctx context.Context, cfg VideoConfig, token string) error {
 
 	client := newHFClient(token)
 
-	// The image we animate. For ai_cartoon we first replace it with a cartoonized version.
-	sourceImage := cfg.InputImages[0]
-
-	if cfg.AnimationStyle == StyleAICartoon {
-		cartoonPath, err := client.cartoonize(ctx, sourceImage, cfg.OutputPath)
-		if err != nil {
-			return fmt.Errorf("cartoonize step: %w", err)
-		}
-		defer os.Remove(cartoonPath)
-		sourceImage = cartoonPath
-	}
-
-	videoBytes, err := client.animate(ctx, sourceImage)
+	// Stage 1: generate a cartoon image with FLUX.
+	prompt := buildCartoonPrompt(cfg.OverlayText, cfg.AnimationStyle)
+	imgBytes, err := client.textToImage(ctx, prompt)
 	if err != nil {
-		return fmt.Errorf("animate step: %w", err)
+		return fmt.Errorf("flux generate step: %w", err)
 	}
 
-	if err := os.WriteFile(cfg.OutputPath, videoBytes, 0o644); err != nil {
-		return fmt.Errorf("write output video: %w", err)
+	cartoonPath := cfg.OutputPath + ".cartoon.png"
+	if err := os.WriteFile(cartoonPath, imgBytes, 0o644); err != nil {
+		return fmt.Errorf("write cartoon image: %w", err)
+	}
+	defer os.Remove(cartoonPath)
+
+	// Stage 2: animate the cartoon image with the FFmpeg Ken Burns pipeline.
+	animCfg := cfg
+	animCfg.InputImages = []string{cartoonPath}
+	animCfg.AnimationStyle = StyleKenBurns // FFmpeg animated path
+	if err := GenerateVideo(animCfg); err != nil {
+		return fmt.Errorf("animate cartoon step: %w", err)
 	}
 	return nil
 }
 
-// cartoonize sends the image to the cartoonizer model and saves the result as a
-// PNG next to the output path. Returns the cartoon image path.
-func (c *hfClient) cartoonize(ctx context.Context, imagePath, outputPath string) (string, error) {
-	imgData, err := os.ReadFile(imagePath)
-	if err != nil {
-		return "", fmt.Errorf("read input image: %w", err)
+// buildCartoonPrompt turns the overlay text (usually the product name/caption)
+// into a FLUX text-to-image prompt with a cartoon style.
+func buildCartoonPrompt(overlayText, style string) string {
+	subject := strings.TrimSpace(overlayText)
+	if subject == "" {
+		subject = "a product for sale"
 	}
 
-	respBytes, err := c.inferBinary(ctx, hfModelCartoonize, imgData)
-	if err != nil {
-		return "", err
+	styleKeywords := "cute 2D cartoon illustration, vibrant colors, clean vector art, " +
+		"product advertisement, centered composition, white background, high quality"
+	if style == StyleAIVideo {
+		// "AI Motion" leans toward a polished 3D render rather than flat cartoon.
+		styleKeywords = "glossy 3D render, studio lighting, product showcase, " +
+			"vibrant colors, centered composition, clean background, high detail"
 	}
 
-	cartoonPath := outputPath + ".cartoon.png"
-	if err := os.WriteFile(cartoonPath, respBytes, 0o644); err != nil {
-		return "", fmt.Errorf("write cartoon image: %w", err)
-	}
-	return cartoonPath, nil
+	return fmt.Sprintf("%s, %s", subject, styleKeywords)
 }
 
-// animate sends the image to the SVD model and returns the resulting MP4 bytes.
-func (c *hfClient) animate(ctx context.Context, imagePath string) ([]byte, error) {
-	imgData, err := os.ReadFile(imagePath)
+// textToImage calls a text-to-image model and returns the raw image bytes.
+func (c *hfClient) textToImage(ctx context.Context, prompt string) ([]byte, error) {
+	body, err := json.Marshal(map[string]any{
+		"inputs": prompt,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("read image to animate: %w", err)
+		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	return c.inferBinary(ctx, hfModelSVD, imgData)
+	return c.infer(ctx, hfModelFlux, body, "application/json")
 }
 
-// inferBinary POSTs raw image bytes to a Hugging Face model and returns the raw
-// binary response (image or video bytes). It retries on HTTP 503 (model loading)
-// until hfMaxWait elapses.
-func (c *hfClient) inferBinary(ctx context.Context, model string, body []byte) ([]byte, error) {
+// infer POSTs a body to a Hugging Face model and returns the raw binary response
+// (image bytes). It retries on HTTP 503 (model loading) until hfMaxWait elapses.
+func (c *hfClient) infer(ctx context.Context, model string, body []byte, contentType string) ([]byte, error) {
 	url := hfBaseURL + model
 	deadline := time.Now().Add(hfMaxWait)
 
@@ -129,7 +139,8 @@ func (c *hfClient) inferBinary(ctx context.Context, model string, body []byte) (
 			return nil, fmt.Errorf("build request: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+c.token)
-		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("Accept", "image/png")
 		// Ask HF to block until the model is loaded when possible.
 		req.Header.Set("X-Wait-For-Model", "true")
 
