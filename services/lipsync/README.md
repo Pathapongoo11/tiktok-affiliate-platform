@@ -19,10 +19,16 @@ The Go API stays GPU-free and just makes HTTP calls.
 
 ## Prerequisites
 
-- NVIDIA GPU + recent driver (`nvidia-smi` works)
-- Python 3.10 recommended (3.11 usually works)
+- NVIDIA GPU + recent driver (`nvidia-smi` works) — verified on RTX 4060 8GB
+- Python 3.10 or 3.11 (tested on 3.11.9)
 - `git` on PATH
 - ~6 GB free disk (SadTalker + model checkpoints)
+
+`install.ps1` handles everything automatically, including:
+- CUDA PyTorch (cu121) + pinning numpy to 1.26.4
+- downloading the 8 model checkpoints via `Invoke-WebRequest` (no wget needed)
+- patching 3 known SadTalker breakages on modern numpy/torchvision
+  (basicsr `functional_tensor`, `np.float`, `align_img` array shape)
 
 ## Install (one time)
 

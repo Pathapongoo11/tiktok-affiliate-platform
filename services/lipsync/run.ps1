@@ -19,6 +19,10 @@ if (-not (Test-Path $VenvPython)) {
 $env:SADTALKER_DIR    = Join-Path $here "SadTalker"
 $env:LIPSYNC_WORK_DIR = Join-Path $here "work"
 $env:LIPSYNC_PORT     = if ($env:LIPSYNC_PORT) { $env:LIPSYNC_PORT } else { "8001" }
+# Run the SadTalker subprocess with the venv interpreter (has torch/cuda/etc.).
+$env:SADTALKER_PYTHON = $VenvPython
+# "crop" is fastest and reliable; "full" gives best quality but is slower.
+$env:SADTALKER_PREPROCESS = if ($env:SADTALKER_PREPROCESS) { $env:SADTALKER_PREPROCESS } else { "crop" }
 
 Write-Host "Starting lip-sync service on http://localhost:$($env:LIPSYNC_PORT)" -ForegroundColor Green
 & $VenvPython (Join-Path $here "app.py")
