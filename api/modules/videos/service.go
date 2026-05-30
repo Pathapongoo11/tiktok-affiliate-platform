@@ -43,6 +43,7 @@ func (s *Service) CreateVideoJob(ctx context.Context, userID uuid.UUID, req Crea
 		OverlayText:     req.OverlayText,
 		AudioPath:       req.AudioPath,
 		DurationSeconds: dur,
+		AnimationStyle:  req.AnimationStyle,
 	}
 
 	created, err := s.repo.CreateJob(ctx, job)
@@ -73,12 +74,12 @@ func (s *Service) processJob(ctx context.Context, job *models.VideoJob) {
 		dur = 30
 	}
 	cfg := VideoConfig{
-		InputImages: job.InputImages,
-		OverlayText: job.OverlayText,
-		AudioPath:   job.AudioPath,
-		OutputPath:  outputFSPath,
-		DurationSec: dur,
-		FPS:         1,
+		InputImages:    job.InputImages,
+		OverlayText:    job.OverlayText,
+		AudioPath:      job.AudioPath,
+		OutputPath:     outputFSPath,
+		DurationSec:    dur,
+		AnimationStyle: job.AnimationStyle,
 	}
 
 	if err := GenerateVideo(cfg); err != nil {

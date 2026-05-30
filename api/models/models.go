@@ -73,6 +73,7 @@ type VideoJob struct {
 	AudioPath       string     `json:"audio_path"`
 	OutputPath      string     `json:"output_path"`
 	DurationSeconds int        `json:"duration_seconds"`
+	AnimationStyle  string     `json:"animation_style,omitempty"` // "ken_burns" | "zoom_out" | "slide" | "static"
 	ErrorMessage    string     `json:"error_message"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`

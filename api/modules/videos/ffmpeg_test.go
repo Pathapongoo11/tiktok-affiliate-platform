@@ -191,3 +191,137 @@ func TestGenerateVideo_ErrorContainsFfmpegPrefix(t *testing.T) {
 		"error must start with diagnostic prefix, got: %q", err.Error(),
 	)
 }
+
+// ---------------------------------------------------------------------------
+// buildPerImageFilter tests (no FFmpeg required)
+// ---------------------------------------------------------------------------
+
+func TestBuildPerImageFilter_KenBurns_ContainsZoompan(t *testing.T) {
+	f := videos.BuildPerImageFilter(0, 150, videos.StyleKenBurns)
+	assert.Contains(t, f, "[0:v]")
+	assert.Contains(t, f, "scale=1080:1920")
+	assert.Contains(t, f, "zoompan")
+	assert.Contains(t, f, "zoom+0.0015")
+	assert.Contains(t, f, "s=1080x1920")
+}
+
+func TestBuildPerImageFilter_ZoomOut_ContainsZoompan(t *testing.T) {
+	f := videos.BuildPerImageFilter(1, 150, videos.StyleZoomOut)
+	assert.Contains(t, f, "[1:v]")
+	assert.Contains(t, f, "zoompan")
+	assert.Contains(t, f, "zoom-0.0015")
+}
+
+func TestBuildPerImageFilter_Slide_ContainsZoompan(t *testing.T) {
+	f := videos.BuildPerImageFilter(2, 150, videos.StyleSlide)
+	assert.Contains(t, f, "[2:v]")
+	assert.Contains(t, f, "zoompan")
+	assert.Contains(t, f, "z=1.05")
+}
+
+func TestBuildPerImageFilter_Static_NoZoompan(t *testing.T) {
+	f := videos.BuildPerImageFilter(0, 150, videos.StyleStatic)
+	assert.Contains(t, f, "[0:v]")
+	assert.Contains(t, f, "scale=1080:1920")
+	assert.NotContains(t, f, "zoompan")
+}
+
+func TestBuildPerImageFilter_UnknownStyle_DefaultsToKenBurns(t *testing.T) {
+	f := videos.BuildPerImageFilter(0, 150, "unknown_style")
+	assert.Contains(t, f, "zoom+0.0015", "unknown style should fall back to ken_burns")
+}
+
+// ---------------------------------------------------------------------------
+// buildAnimatedFilterComplex tests (no FFmpeg required)
+// ---------------------------------------------------------------------------
+
+func TestBuildAnimatedFilterComplex_SingleImage_NoXfade(t *testing.T) {
+	inputArgs, fc, label := videos.BuildAnimatedFilterComplex(
+		[]string{"img.jpg"}, 5, videos.StyleKenBurns, "", "",
+	)
+
+	// 6 input flags per image: -loop 1 -t X.XXX -i path
+	assert.Len(t, inputArgs, 6)
+	assert.Equal(t, "-loop", inputArgs[0])
+	assert.Equal(t, "-i", inputArgs[4])
+
+	// Single image → output label is [v0], no xfade
+	assert.Equal(t, "[v0]", label)
+	assert.Contains(t, fc, "[v0]")
+	assert.Contains(t, fc, "zoompan")
+	assert.NotContains(t, fc, "xfade")
+}
+
+func TestBuildAnimatedFilterComplex_TwoImages_HasXfade(t *testing.T) {
+	inputArgs, fc, label := videos.BuildAnimatedFilterComplex(
+		[]string{"a.jpg", "b.jpg"}, 10, videos.StyleKenBurns, "", "",
+	)
+
+	// 12 input flags for 2 images (6 per image)
+	assert.Len(t, inputArgs, 12)
+
+	assert.Contains(t, fc, "[v0]")
+	assert.Contains(t, fc, "[v1]")
+	assert.Contains(t, fc, "xfade")
+	assert.Contains(t, fc, "transition=fade")
+	assert.Equal(t, "[vxfinal]", label)
+}
+
+func TestBuildAnimatedFilterComplex_ThreeImages_XfadeOffsets(t *testing.T) {
+	// 3 images × 5s each = 15s total, xfade duration 0.5s
+	// offset[1] = 1 × (5 - 0.5) = 4.5
+	// offset[2] = 2 × (5 - 0.5) = 9.0
+	_, fc, _ := videos.BuildAnimatedFilterComplex(
+		[]string{"a.jpg", "b.jpg", "c.jpg"}, 15, videos.StyleKenBurns, "", "",
+	)
+
+	assert.Contains(t, fc, "offset=4.500")
+	assert.Contains(t, fc, "offset=9.000")
+	assert.Contains(t, fc, "[vxfinal]")
+}
+
+func TestBuildAnimatedFilterComplex_WithOverlayText_AddsDrawtext(t *testing.T) {
+	_, fc, label := videos.BuildAnimatedFilterComplex(
+		[]string{"img.jpg"}, 5, videos.StyleKenBurns,
+		"Test Product ฿399", "/usr/share/fonts/test.ttf",
+	)
+
+	assert.Contains(t, fc, "drawtext")
+	assert.Contains(t, fc, "Test Product")
+	assert.Equal(t, "[vout]", label)
+}
+
+func TestBuildAnimatedFilterComplex_NoOverlayText_NoDrawtext(t *testing.T) {
+	_, fc, _ := videos.BuildAnimatedFilterComplex(
+		[]string{"img.jpg"}, 5, videos.StyleKenBurns, "", "",
+	)
+	assert.NotContains(t, fc, "drawtext")
+}
+
+func TestBuildAnimatedFilterComplex_NoFontPath_NoDrawtext(t *testing.T) {
+	// overlay text provided but no font path → no drawtext
+	_, fc, _ := videos.BuildAnimatedFilterComplex(
+		[]string{"img.jpg"}, 5, videos.StyleKenBurns, "Some Text", "",
+	)
+	assert.NotContains(t, fc, "drawtext")
+}
+
+func TestBuildAnimatedFilterComplex_InputArgsCount(t *testing.T) {
+	// N images → N×6 input args: -loop 1 -t X.XXX -i path
+	for _, n := range []int{1, 2, 3, 5} {
+		images := make([]string, n)
+		for i := range images {
+			images[i] = fmt.Sprintf("img%d.jpg", i)
+		}
+		inputArgs, _, _ := videos.BuildAnimatedFilterComplex(images, 15, videos.StyleKenBurns, "", "")
+		assert.Len(t, inputArgs, n*6, "expected %d×6 input flags for %d images", n, n)
+	}
+}
+
+func TestBuildAnimatedFilterComplex_StaticStyle_NoZoompan(t *testing.T) {
+	_, fc, _ := videos.BuildAnimatedFilterComplex(
+		[]string{"a.jpg", "b.jpg"}, 10, videos.StyleStatic, "", "",
+	)
+	assert.NotContains(t, fc, "zoompan")
+	assert.Contains(t, fc, "scale=1080:1920")
+}

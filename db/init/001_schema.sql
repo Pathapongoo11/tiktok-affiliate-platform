@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS video_jobs (
     audio_path VARCHAR(500),
     output_path VARCHAR(500),
     duration_seconds INT,
+    animation_style VARCHAR(20) NOT NULL DEFAULT '',
     error_message TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
