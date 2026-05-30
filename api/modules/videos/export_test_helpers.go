@@ -15,3 +15,8 @@ func BuildAnimatedFilterComplex(images []string, durationSec int, style, overlay
 func BuildPerImageFilter(idx, framesPerImg int, style string) string {
 	return buildPerImageFilter(idx, framesPerImg, style)
 }
+
+// BuildCartoonPrompt exposes buildCartoonPrompt for testing.
+func BuildCartoonPrompt(overlayText, style string) string {
+	return buildCartoonPrompt(overlayText, style)
+}

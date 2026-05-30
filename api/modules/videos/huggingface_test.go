@@ -62,36 +62,62 @@ func TestGenerateAIVideo_NoImages_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "no input images provided")
 }
 
-func TestGenerateAIVideo_MissingImageFile_ReturnsError(t *testing.T) {
-	// Token + style set, but the image file doesn't exist on disk.
-	// Should fail at the read step, not panic.
+func TestGenerateAIVideo_CancelledContext_ReturnsError(t *testing.T) {
+	// With a cancelled context the FLUX request fails fast instead of hitting
+	// the network — verifies the error path without external calls.
 	cfg := videos.VideoConfig{
-		InputImages:    []string{filepath.Join(t.TempDir(), "does-not-exist.png")},
+		InputImages:    []string{filepath.Join(t.TempDir(), "img.png")},
 		OutputPath:     filepath.Join(t.TempDir(), "out.mp4"),
-		AnimationStyle: videos.StyleAIVideo,
+		OverlayText:    "Test Product",
+		AnimationStyle: videos.StyleAICartoon,
 	}
 
-	// Use a cancelled context so we never actually hit the network even if the
-	// file somehow existed — the read error should surface first regardless.
-	err := videos.GenerateAIVideo(context.Background(), cfg, "fake-token")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	err := videos.GenerateAIVideo(ctx, cfg, "fake-token")
 
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "flux generate step")
 }
 
 func TestGenerateAIVideo_CreatesOutputDir(t *testing.T) {
 	// Verify the output directory is created before any network work.
-	// We point at a nested dir that doesn't exist yet and a missing image so
-	// the function returns after mkdir + read-fail, but the dir must exist.
 	base := t.TempDir()
 	nested := filepath.Join(base, "a", "b", "c")
 	cfg := videos.VideoConfig{
-		InputImages:    []string{filepath.Join(base, "missing.png")},
+		InputImages:    []string{filepath.Join(base, "img.png")},
 		OutputPath:     filepath.Join(nested, "out.mp4"),
-		AnimationStyle: videos.StyleAIVideo,
+		OverlayText:    "Test Product",
+		AnimationStyle: videos.StyleAICartoon,
 	}
 
-	_ = videos.GenerateAIVideo(context.Background(), cfg, "fake-token")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = videos.GenerateAIVideo(ctx, cfg, "fake-token")
 
 	_, statErr := os.Stat(nested)
 	assert.NoError(t, statErr, "output directory should have been created")
+}
+
+// ---------------------------------------------------------------------------
+// buildCartoonPrompt
+// ---------------------------------------------------------------------------
+
+func TestBuildCartoonPrompt_UsesOverlayText(t *testing.T) {
+	p := videos.BuildCartoonPrompt("Vitamin C Serum", videos.StyleAICartoon)
+	assert.Contains(t, p, "Vitamin C Serum")
+	assert.Contains(t, p, "cartoon")
+}
+
+func TestBuildCartoonPrompt_EmptyText_HasFallback(t *testing.T) {
+	p := videos.BuildCartoonPrompt("", videos.StyleAICartoon)
+	assert.Contains(t, p, "product")
+	assert.NotEmpty(t, p)
+}
+
+func TestBuildCartoonPrompt_AIVideoStyle_Uses3D(t *testing.T) {
+	p := videos.BuildCartoonPrompt("Energy Drink", videos.StyleAIVideo)
+	assert.Contains(t, p, "Energy Drink")
+	assert.Contains(t, p, "3D render")
 }
