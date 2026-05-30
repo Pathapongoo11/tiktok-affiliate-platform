@@ -49,6 +49,7 @@ func (s *Service) CreateVideoJob(ctx context.Context, userID uuid.UUID, req Crea
 		AudioPath:       req.AudioPath,
 		DurationSeconds: dur,
 		AnimationStyle:  req.AnimationStyle,
+		ScenePrompt:     req.ScenePrompt,
 	}
 
 	created, err := s.repo.CreateJob(ctx, job)
@@ -85,6 +86,7 @@ func (s *Service) processJob(ctx context.Context, job *models.VideoJob) {
 		OutputPath:     outputFSPath,
 		DurationSec:    dur,
 		AnimationStyle: job.AnimationStyle,
+		ScenePrompt:    job.ScenePrompt,
 	}
 
 	if err := s.render(ctx, cfg); err != nil {

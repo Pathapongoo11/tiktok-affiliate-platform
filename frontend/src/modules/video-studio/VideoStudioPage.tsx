@@ -6,6 +6,7 @@ import type { VideoJob } from '../../types'
 export default function VideoStudioPage() {
   const [uploadedPaths, setUploadedPaths] = useState<string[]>([])
   const [overlayText, setOverlayText] = useState('')
+  const [scenePrompt, setScenePrompt] = useState('')
   const [duration, setDuration] = useState(15)
   const [animationStyle, setAnimationStyle] = useState('ken_burns')
   const [audioPath, setAudioPath] = useState('')
@@ -37,6 +38,7 @@ export default function VideoStudioPage() {
         duration_seconds: duration,
         animation_style: animationStyle,
       }
+      if (scenePrompt) payload.scene_prompt = scenePrompt
       if (audioPath) payload.audio_path = audioPath
       const res = await client.post('/videos/generate', payload)
       const jobId = res.data.id || res.data.jobId
@@ -59,7 +61,7 @@ export default function VideoStudioPage() {
       setPolling(false)
       setError('Failed to start video generation.')
     }
-  }, [overlayText, duration, animationStyle, audioPath, polling]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [overlayText, scenePrompt, duration, animationStyle, audioPath, polling]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep autoGenRef pointing at the latest startGeneration
   useEffect(() => {
@@ -248,12 +250,12 @@ export default function VideoStudioPage() {
             {/* AI-powered styles (require HUGGINGFACE_TOKEN on the server) */}
             <div className="flex items-center gap-2 pt-1">
               <span className="text-xs font-semibold text-purple-600">✨ AI-Powered</span>
-              <span className="text-[10px] text-gray-400">(uses AI image-to-video — slower, may fall back if not configured)</span>
+              <span className="text-[10px] text-gray-400">(generates a brand-new AI scene image, then animates it)</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { value: 'ai_video',   label: '🤖 AI Motion',  desc: 'Realistic AI animation' },
-                { value: 'ai_cartoon', label: '🎨 AI Cartoon', desc: 'Cartoonify + animate' },
+                { value: 'ai_video',   label: '🤖 AI Motion',  desc: '3D product render' },
+                { value: 'ai_cartoon', label: '🎨 AI Cartoon', desc: 'Dramatic character ad' },
               ].map(({ value, label, desc }) => (
                 <button
                   key={value}
@@ -270,6 +272,26 @@ export default function VideoStudioPage() {
                 </button>
               ))}
             </div>
+
+            {/* Scene Prompt — only shown for AI styles */}
+            {(animationStyle === 'ai_cartoon' || animationStyle === 'ai_video') && (
+              <div className="space-y-1.5 pt-2 border-t border-dashed border-pink-200">
+                <label className="block text-sm font-medium text-gray-700">
+                  🎬 Scene Prompt <span className="text-pink-600">(English — describe the scene/character)</span>
+                </label>
+                <textarea
+                  value={scenePrompt}
+                  onChange={(e) => setScenePrompt(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. an angry germ monster wearing a crown, sitting on a throne inside the human body"
+                  className="w-full px-3 py-2 border border-pink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                />
+                <p className="text-[11px] text-gray-400 leading-snug">
+                  💡 บอกเป็นภาษาอังกฤษว่าอยากได้ตัวละคร/ฉากแบบไหน — AI จะวาดภาพใหม่ตามนี้
+                  แล้วเอาข้อความ "Text Overlay" (ไทยได้) ไปแปะทับบนวิดีโอ
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

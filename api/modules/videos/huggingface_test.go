@@ -104,20 +104,26 @@ func TestGenerateAIVideo_CreatesOutputDir(t *testing.T) {
 // buildCartoonPrompt
 // ---------------------------------------------------------------------------
 
-func TestBuildCartoonPrompt_UsesOverlayText(t *testing.T) {
-	p := videos.BuildCartoonPrompt("Vitamin C Serum", videos.StyleAICartoon)
-	assert.Contains(t, p, "Vitamin C Serum")
-	assert.Contains(t, p, "cartoon")
+func TestBuildCartoonPrompt_UsesSubject(t *testing.T) {
+	p := videos.BuildCartoonPrompt("an angry germ monster wearing a crown", videos.StyleAICartoon)
+	assert.Contains(t, p, "an angry germ monster wearing a crown")
+	assert.Contains(t, p, "character render")
 }
 
 func TestBuildCartoonPrompt_EmptyText_HasFallback(t *testing.T) {
 	p := videos.BuildCartoonPrompt("", videos.StyleAICartoon)
-	assert.Contains(t, p, "product")
+	assert.Contains(t, p, "mascot")
 	assert.NotEmpty(t, p)
 }
 
-func TestBuildCartoonPrompt_AIVideoStyle_Uses3D(t *testing.T) {
+func TestBuildCartoonPrompt_AIVideoStyle_UsesProductRender(t *testing.T) {
 	p := videos.BuildCartoonPrompt("Energy Drink", videos.StyleAIVideo)
 	assert.Contains(t, p, "Energy Drink")
-	assert.Contains(t, p, "3D render")
+	assert.Contains(t, p, "product render")
+}
+
+func TestBuildCartoonPrompt_CartoonVsAIVideo_DifferentStyles(t *testing.T) {
+	cartoon := videos.BuildCartoonPrompt("X", videos.StyleAICartoon)
+	aivideo := videos.BuildCartoonPrompt("X", videos.StyleAIVideo)
+	assert.NotEqual(t, cartoon, aivideo, "the two styles should produce different prompts")
 }

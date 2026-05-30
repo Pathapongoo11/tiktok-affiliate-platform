@@ -9,58 +9,58 @@ import (
 // --- Domain Models ---
 
 type User struct {
-	ID           uuid.UUID  `json:"id"`
-	Email        string     `json:"email"`
-	PasswordHash string     `json:"-"`
-	DisplayName  string     `json:"display_name"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID           uuid.UUID `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"`
+	DisplayName  string    `json:"display_name"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type TikTokAccount struct {
-	ID             uuid.UUID  `json:"id"`
-	UserID         uuid.UUID  `json:"user_id"`
-	TikTokUserID   string     `json:"tiktok_user_id"`
-	DisplayName    string     `json:"display_name"`
-	AccessToken    string     `json:"-"`
-	RefreshToken   string     `json:"-"`
-	TokenExpiresAt time.Time  `json:"token_expires_at"`
-	IsActive       bool       `json:"is_active"`
+	ID             uuid.UUID `json:"id"`
+	UserID         uuid.UUID `json:"user_id"`
+	TikTokUserID   string    `json:"tiktok_user_id"`
+	DisplayName    string    `json:"display_name"`
+	AccessToken    string    `json:"-"`
+	RefreshToken   string    `json:"-"`
+	TokenExpiresAt time.Time `json:"token_expires_at"`
+	IsActive       bool      `json:"is_active"`
 }
 
 type Product struct {
-	ID            uuid.UUID `json:"id"`
-	UserID        uuid.UUID `json:"user_id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	Price         float64   `json:"price"`
-	CommissionRate float64  `json:"commission_rate"`
-	Category      string    `json:"category"`
-	ShopProductID string    `json:"shop_product_id"`
-	ImageURLs     []string  `json:"image_urls"`
-	Score         float64   `json:"score"`
-	IsActive      bool      `json:"is_active"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID             uuid.UUID `json:"id"`
+	UserID         uuid.UUID `json:"user_id"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	Price          float64   `json:"price"`
+	CommissionRate float64   `json:"commission_rate"`
+	Category       string    `json:"category"`
+	ShopProductID  string    `json:"shop_product_id"`
+	ImageURLs      []string  `json:"image_urls"`
+	Score          float64   `json:"score"`
+	IsActive       bool      `json:"is_active"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type Post struct {
-	ID               uuid.UUID  `json:"id"`
-	UserID           uuid.UUID  `json:"user_id"`
-	TikTokAccountID  *uuid.UUID `json:"tiktok_account_id,omitempty"`
-	ProductID        *uuid.UUID `json:"product_id,omitempty"`
-	Title            string     `json:"title"`
-	Caption          string     `json:"caption"`
-	Hashtags         []string   `json:"hashtags"`
-	VideoPath        string     `json:"video_path"`
-	TikTokVideoID    string     `json:"tiktok_video_id"`
-	Status           string     `json:"status"`
-	ScheduledAt      *time.Time `json:"scheduled_at,omitempty"`
-	PublishedAt      *time.Time `json:"published_at,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	UserID          uuid.UUID  `json:"user_id"`
+	TikTokAccountID *uuid.UUID `json:"tiktok_account_id,omitempty"`
+	ProductID       *uuid.UUID `json:"product_id,omitempty"`
+	Title           string     `json:"title"`
+	Caption         string     `json:"caption"`
+	Hashtags        []string   `json:"hashtags"`
+	VideoPath       string     `json:"video_path"`
+	TikTokVideoID   string     `json:"tiktok_video_id"`
+	Status          string     `json:"status"`
+	ScheduledAt     *time.Time `json:"scheduled_at,omitempty"`
+	PublishedAt     *time.Time `json:"published_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 	// Joined fields
-	Product          *Product   `json:"product,omitempty"`
+	Product *Product `json:"product,omitempty"`
 }
 
 type VideoJob struct {
@@ -73,7 +73,8 @@ type VideoJob struct {
 	AudioPath       string     `json:"audio_path"`
 	OutputPath      string     `json:"output_path"`
 	DurationSeconds int        `json:"duration_seconds"`
-	AnimationStyle  string     `json:"animation_style,omitempty"` // "ken_burns" | "zoom_out" | "slide" | "static"
+	AnimationStyle  string     `json:"animation_style,omitempty"` // "ken_burns" | "zoom_out" | "slide" | "static" | "ai_cartoon" | "ai_video"
+	ScenePrompt     string     `json:"scene_prompt,omitempty"`    // English scene description for AI image gen
 	ErrorMessage    string     `json:"error_message"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
@@ -176,16 +177,16 @@ type ProductWithFlags struct {
 }
 
 type DashboardStats struct {
-	TotalPosts      int     `json:"total_posts"`
-	TotalViews      int64   `json:"total_views"`
-	TotalLikes      int64   `json:"total_likes"`
-	TotalRevenue    float64 `json:"total_revenue"`
-	AvgEngagement   float64 `json:"avg_engagement_rate"`
+	TotalPosts    int     `json:"total_posts"`
+	TotalViews    int64   `json:"total_views"`
+	TotalLikes    int64   `json:"total_likes"`
+	TotalRevenue  float64 `json:"total_revenue"`
+	AvgEngagement float64 `json:"avg_engagement_rate"`
 }
 
 type TopPost struct {
-	Post  *Post  `json:"post"`
-	Views int64  `json:"views"`
+	Post  *Post `json:"post"`
+	Views int64 `json:"views"`
 }
 
 type ProductPerformance struct {

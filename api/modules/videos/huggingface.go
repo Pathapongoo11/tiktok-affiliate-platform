@@ -75,7 +75,12 @@ func GenerateAIVideo(ctx context.Context, cfg VideoConfig, token string) error {
 	client := newHFClient(token)
 
 	// Stage 1: generate a cartoon image with FLUX.
-	prompt := buildCartoonPrompt(cfg.OverlayText, cfg.AnimationStyle)
+	// Prefer the explicit English scene prompt; fall back to overlay text.
+	promptSubject := cfg.ScenePrompt
+	if strings.TrimSpace(promptSubject) == "" {
+		promptSubject = cfg.OverlayText
+	}
+	prompt := buildCartoonPrompt(promptSubject, cfg.AnimationStyle)
 	imgBytes, err := client.textToImage(ctx, prompt)
 	if err != nil {
 		return fmt.Errorf("flux generate step: %w", err)
@@ -97,20 +102,29 @@ func GenerateAIVideo(ctx context.Context, cfg VideoConfig, token string) error {
 	return nil
 }
 
-// buildCartoonPrompt turns the overlay text (usually the product name/caption)
-// into a FLUX text-to-image prompt with a cartoon style.
-func buildCartoonPrompt(overlayText, style string) string {
-	subject := strings.TrimSpace(overlayText)
+// buildCartoonPrompt turns a scene description into a FLUX text-to-image prompt.
+//
+// The subject should be an English scene/character description (e.g. "an angry
+// germ monster wearing a crown"). Style keywords are tuned to match the punchy,
+// dramatic look of Thai TikTok health/beauty ads — a single bold character,
+// cinematic lighting, vivid colors, vertical 9:16 composition.
+func buildCartoonPrompt(subject, style string) string {
+	subject = strings.TrimSpace(subject)
 	if subject == "" {
-		subject = "a product for sale"
+		subject = "a friendly product mascot character"
 	}
 
-	styleKeywords := "cute 2D cartoon illustration, vibrant colors, clean vector art, " +
-		"product advertisement, centered composition, white background, high quality"
+	// ai_cartoon → dramatic 3D character-ad look (matches the reference style).
+	styleKeywords := "highly detailed 3D Pixar-style character render, " +
+		"dramatic cinematic lighting, bold vivid colors, expressive face, " +
+		"eye-catching TikTok advertisement, dynamic close-up, vertical 9:16 composition, " +
+		"depth of field, high detail, trending product ad"
+
 	if style == StyleAIVideo {
-		// "AI Motion" leans toward a polished 3D render rather than flat cartoon.
-		styleKeywords = "glossy 3D render, studio lighting, product showcase, " +
-			"vibrant colors, centered composition, clean background, high detail"
+		// ai_video → cleaner glossy product-render look.
+		styleKeywords = "glossy 3D product render, studio lighting, vibrant colors, " +
+			"floating product showcase, clean gradient background, dynamic angle, " +
+			"vertical 9:16 composition, high detail, premium advertisement"
 	}
 
 	return fmt.Sprintf("%s, %s", subject, styleKeywords)
