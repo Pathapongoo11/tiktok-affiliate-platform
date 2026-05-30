@@ -49,6 +49,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_change_in_prod}
       - TIKTOK_CLIENT_KEY=${TIKTOK_CLIENT_KEY:-}
       - TIKTOK_CLIENT_SECRET=${TIKTOK_CLIENT_SECRET:-}
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
       - ENV=development
     depends_on:
       postgres:
