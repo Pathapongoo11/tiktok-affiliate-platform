@@ -244,6 +244,32 @@ export default function VideoStudioPage() {
                 </button>
               ))}
             </div>
+
+            {/* AI-powered styles (require HUGGINGFACE_TOKEN on the server) */}
+            <div className="flex items-center gap-2 pt-1">
+              <span className="text-xs font-semibold text-purple-600">✨ AI-Powered</span>
+              <span className="text-[10px] text-gray-400">(uses AI image-to-video — slower, may fall back if not configured)</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { value: 'ai_video',   label: '🤖 AI Motion',  desc: 'Realistic AI animation' },
+                { value: 'ai_cartoon', label: '🎨 AI Cartoon', desc: 'Cartoonify + animate' },
+              ].map(({ value, label, desc }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setAnimationStyle(value)}
+                  className={`flex flex-col items-center gap-0.5 px-2 py-2.5 rounded-lg border text-xs font-medium transition-colors ${
+                    animationStyle === value
+                      ? 'border-pink-500 bg-pink-50 text-pink-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-pink-300 hover:bg-pink-50'
+                  }`}
+                >
+                  <span>{label}</span>
+                  <span className="text-gray-400 font-normal">{desc}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-2">

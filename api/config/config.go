@@ -14,6 +14,7 @@ type Config struct {
 	TikTokClientKey    string
 	TikTokClientSecret string
 	TikTokRedirectURI  string
+	HuggingFaceToken   string
 	Env                string
 }
 
@@ -27,6 +28,7 @@ func Load() *Config {
 		TikTokClientKey:    getEnv("TIKTOK_CLIENT_KEY", ""),
 		TikTokClientSecret: getEnv("TIKTOK_CLIENT_SECRET", ""),
 		TikTokRedirectURI:  getEnv("TIKTOK_REDIRECT_URI", "http://localhost:3000/auth/tiktok/callback"),
+		HuggingFaceToken:   getEnv("HUGGINGFACE_TOKEN", ""),
 		Env:                getEnv("ENV", "development"),
 	}
 }

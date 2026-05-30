@@ -3,6 +3,7 @@ package videos
 import (
 	"context"
 	"fmt"
+	"log"
 	"path/filepath"
 	"time"
 
@@ -12,18 +13,22 @@ import (
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/models"
 )
 
-// Service orchestrates video job creation and async FFmpeg processing.
+// Service orchestrates video job creation and async FFmpeg / AI processing.
 type Service struct {
 	repo       *Repository
 	uploadsDir string
+	hfToken    string // Hugging Face token for AI styles; empty disables AI pipeline
 }
 
 // NewService constructs a Service.
 // uploadsDir is the root directory where generated MP4 files are saved (e.g. "uploads/").
-func NewService(db *pgxpool.Pool, uploadsDir string) *Service {
+// hfToken enables the AI video pipeline; pass "" to disable it (AI styles then
+// fall back to the ken_burns FFmpeg animation).
+func NewService(db *pgxpool.Pool, uploadsDir, hfToken string) *Service {
 	return &Service{
 		repo:       NewRepository(db),
 		uploadsDir: uploadsDir,
+		hfToken:    hfToken,
 	}
 }
 
@@ -82,13 +87,27 @@ func (s *Service) processJob(ctx context.Context, job *models.VideoJob) {
 		AnimationStyle: job.AnimationStyle,
 	}
 
-	if err := GenerateVideo(cfg); err != nil {
+	if err := s.render(ctx, cfg); err != nil {
 		s.repo.UpdateJobStatus(ctx, job.ID, "failed", "", err.Error()) //nolint:errcheck
 		return
 	}
 
 	// Store the public URL path so the browser can fetch it via the static file route.
 	s.repo.UpdateJobStatus(ctx, job.ID, "done", outputURLPath, "") //nolint:errcheck
+}
+
+// render dispatches to the AI pipeline or the FFmpeg pipeline based on the
+// requested style. AI styles fall back to ken_burns when no HF token is set.
+func (s *Service) render(ctx context.Context, cfg VideoConfig) error {
+	if IsAIStyle(cfg.AnimationStyle) {
+		if s.hfToken == "" {
+			log.Printf("[video] AI style %q requested but HUGGINGFACE_TOKEN is unset — falling back to ken_burns", cfg.AnimationStyle)
+			cfg.AnimationStyle = StyleKenBurns
+			return GenerateVideo(cfg)
+		}
+		return GenerateAIVideo(ctx, cfg, s.hfToken)
+	}
+	return GenerateVideo(cfg)
 }
 
 // GetJob returns a single job by ID.
