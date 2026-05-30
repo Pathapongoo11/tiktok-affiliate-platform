@@ -50,7 +50,11 @@ services:
       - TIKTOK_CLIENT_KEY=${TIKTOK_CLIENT_KEY:-}
       - TIKTOK_CLIENT_SECRET=${TIKTOK_CLIENT_SECRET:-}
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - LIPSYNC_URL=${LIPSYNC_URL:-}
       - ENV=development
+    extra_hosts:
+      # Lets the container reach the SadTalker lip-sync service on the Windows host
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy

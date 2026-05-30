@@ -11,32 +11,38 @@ const (
 	StyleStatic   = "static"    // no motion — original concat-demuxer slideshow
 
 	// AI-based styles (require HUGGINGFACE_TOKEN — fall back to ken_burns if unset)
-	StyleAIVideo   = "ai_video"   // Stable Video Diffusion: realistic motion from the photo
-	StyleAICartoon = "ai_cartoon" // 2-step: cartoonize the image, then animate it
+	StyleAIVideo   = "ai_video"   // FLUX scene image → Ken Burns
+	StyleAICartoon = "ai_cartoon" // FLUX cartoon character → Ken Burns
+
+	// Lip-sync style (requires LIPSYNC_URL microservice + audio — falls back to
+	// ai_cartoon when unavailable). FLUX character → SadTalker talking head.
+	StyleAITalking = "ai_talking"
 )
 
-// IsAIStyle reports whether the given style requires the Hugging Face AI pipeline.
+// IsAIStyle reports whether the given style uses the Hugging Face FLUX pipeline.
 func IsAIStyle(style string) bool {
-	return style == StyleAIVideo || style == StyleAICartoon
+	return style == StyleAIVideo || style == StyleAICartoon || style == StyleAITalking
 }
 
 // CreateJobRequest is the payload for POST /api/videos/generate.
 type CreateJobRequest struct {
 	PostID         *uuid.UUID `json:"post_id,omitempty"`
 	InputImages    []string   `json:"input_images"`
-	OverlayText    string     `json:"overlay_text"`
+	OverlayText    string     `json:"overlay_text"`           // marketing text burned onto the video (Thai OK)
+	ScenePrompt    string     `json:"scene_prompt,omitempty"` // English scene description for AI image gen
 	AudioPath      string     `json:"audio_path,omitempty"`
 	DurationSec    int        `json:"duration_seconds"`
-	AnimationStyle string     `json:"animation_style,omitempty"` // "" | "ken_burns" | "zoom_out" | "slide" | "static"
+	AnimationStyle string     `json:"animation_style,omitempty"` // "" | "ken_burns" | "zoom_out" | "slide" | "static" | "ai_cartoon" | "ai_video"
 }
 
 // VideoConfig holds FFmpeg generation parameters.
 type VideoConfig struct {
 	InputImages    []string // file paths to product images
-	OverlayText    string   // text to overlay on the video
+	OverlayText    string   // text to overlay on the video (Thai OK — burned by FFmpeg)
+	ScenePrompt    string   // English scene description for AI image generation (FLUX)
 	AudioPath      string   // optional background music path
 	OutputPath     string   // destination MP4 path
 	DurationSec    int      // target duration in seconds (15–60)
 	FPS            int      // frames per second (default 1 for slideshow, 30 for animated)
-	AnimationStyle string   // "" / "ken_burns" / "zoom_out" / "slide" / "static"
+	AnimationStyle string   // "" / "ken_burns" / "zoom_out" / "slide" / "static" / "ai_cartoon" / "ai_video"
 }

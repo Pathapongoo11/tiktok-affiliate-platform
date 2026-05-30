@@ -68,22 +68,11 @@ func GenerateAIVideo(ctx context.Context, cfg VideoConfig, token string) error {
 	if len(cfg.InputImages) == 0 {
 		return fmt.Errorf("no input images provided")
 	}
-	if err := os.MkdirAll(filepath.Dir(cfg.OutputPath), 0o755); err != nil {
-		return fmt.Errorf("failed to create output dir: %w", err)
-	}
-
-	client := newHFClient(token)
 
 	// Stage 1: generate a cartoon image with FLUX.
-	prompt := buildCartoonPrompt(cfg.OverlayText, cfg.AnimationStyle)
-	imgBytes, err := client.textToImage(ctx, prompt)
-	if err != nil {
-		return fmt.Errorf("flux generate step: %w", err)
-	}
-
 	cartoonPath := cfg.OutputPath + ".cartoon.png"
-	if err := os.WriteFile(cartoonPath, imgBytes, 0o644); err != nil {
-		return fmt.Errorf("write cartoon image: %w", err)
+	if err := GenerateAICharacterImage(ctx, cfg, token, cartoonPath); err != nil {
+		return fmt.Errorf("flux generate step: %w", err)
 	}
 	defer os.Remove(cartoonPath)
 
@@ -97,20 +86,57 @@ func GenerateAIVideo(ctx context.Context, cfg VideoConfig, token string) error {
 	return nil
 }
 
-// buildCartoonPrompt turns the overlay text (usually the product name/caption)
-// into a FLUX text-to-image prompt with a cartoon style.
-func buildCartoonPrompt(overlayText, style string) string {
-	subject := strings.TrimSpace(overlayText)
-	if subject == "" {
-		subject = "a product for sale"
+// GenerateAICharacterImage generates a single character/scene image with FLUX
+// and writes it to destPath. Shared by the ai_cartoon/ai_video pipelines and the
+// ai_talking lip-sync pipeline (which feeds the image to SadTalker).
+func GenerateAICharacterImage(ctx context.Context, cfg VideoConfig, token, destPath string) error {
+	if token == "" {
+		return fmt.Errorf("huggingface token not configured")
+	}
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("failed to create output dir: %w", err)
 	}
 
-	styleKeywords := "cute 2D cartoon illustration, vibrant colors, clean vector art, " +
-		"product advertisement, centered composition, white background, high quality"
+	// Prefer the explicit English scene prompt; fall back to overlay text.
+	promptSubject := cfg.ScenePrompt
+	if strings.TrimSpace(promptSubject) == "" {
+		promptSubject = cfg.OverlayText
+	}
+	prompt := buildCartoonPrompt(promptSubject, cfg.AnimationStyle)
+
+	imgBytes, err := newHFClient(token).textToImage(ctx, prompt)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(destPath, imgBytes, 0o644); err != nil {
+		return fmt.Errorf("write character image: %w", err)
+	}
+	return nil
+}
+
+// buildCartoonPrompt turns a scene description into a FLUX text-to-image prompt.
+//
+// The subject should be an English scene/character description (e.g. "an angry
+// germ monster wearing a crown"). Style keywords are tuned to match the punchy,
+// dramatic look of Thai TikTok health/beauty ads — a single bold character,
+// cinematic lighting, vivid colors, vertical 9:16 composition.
+func buildCartoonPrompt(subject, style string) string {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		subject = "a friendly product mascot character"
+	}
+
+	// ai_cartoon → dramatic 3D character-ad look (matches the reference style).
+	styleKeywords := "highly detailed 3D Pixar-style character render, " +
+		"dramatic cinematic lighting, bold vivid colors, expressive face, " +
+		"eye-catching TikTok advertisement, dynamic close-up, vertical 9:16 composition, " +
+		"depth of field, high detail, trending product ad"
+
 	if style == StyleAIVideo {
-		// "AI Motion" leans toward a polished 3D render rather than flat cartoon.
-		styleKeywords = "glossy 3D render, studio lighting, product showcase, " +
-			"vibrant colors, centered composition, clean background, high detail"
+		// ai_video → cleaner glossy product-render look.
+		styleKeywords = "glossy 3D product render, studio lighting, vibrant colors, " +
+			"floating product showcase, clean gradient background, dynamic angle, " +
+			"vertical 9:16 composition, high detail, premium advertisement"
 	}
 
 	return fmt.Sprintf("%s, %s", subject, styleKeywords)
