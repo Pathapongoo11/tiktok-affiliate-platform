@@ -15,11 +15,15 @@ import (
 
 // Hugging Face Inference API endpoints and models.
 //
-// Both models run on the free Hugging Face Inference API. The first request to
-// a cold model returns HTTP 503 with an estimated load time; we retry until the
-// model is warm or the overall deadline elapses.
+// Both models run on the free Hugging Face Inference API via the hf-inference
+// provider. The legacy api-inference.huggingface.co host was deprecated in 2025
+// in favour of router.huggingface.co — see
+// https://huggingface.co/docs/inference-providers/index
+//
+// The first request to a cold model returns HTTP 503 with an estimated load
+// time; we retry until the model is warm or the overall deadline elapses.
 const (
-	hfBaseURL = "https://api-inference.huggingface.co/models/"
+	hfBaseURL = "https://router.huggingface.co/hf-inference/models/"
 
 	// Image → animated video (realistic motion). Outputs MP4 bytes directly.
 	hfModelSVD = "stabilityai/stable-video-diffusion-img2vid-xt"
