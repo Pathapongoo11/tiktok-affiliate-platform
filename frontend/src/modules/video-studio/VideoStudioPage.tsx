@@ -7,6 +7,7 @@ export default function VideoStudioPage() {
   const [uploadedPaths, setUploadedPaths] = useState<string[]>([])
   const [overlayText, setOverlayText] = useState('')
   const [duration, setDuration] = useState(15)
+  const [animationStyle, setAnimationStyle] = useState('ken_burns')
   const [audioPath, setAudioPath] = useState('')
   const [uploading, setUploading] = useState(false)
   const [audioUploading, setAudioUploading] = useState(false)
@@ -34,6 +35,7 @@ export default function VideoStudioPage() {
         input_images: paths,
         overlay_text: overlayText,
         duration_seconds: duration,
+        animation_style: animationStyle,
       }
       if (audioPath) payload.audio_path = audioPath
       const res = await client.post('/videos/generate', payload)
@@ -57,7 +59,7 @@ export default function VideoStudioPage() {
       setPolling(false)
       setError('Failed to start video generation.')
     }
-  }, [overlayText, duration, audioPath, polling]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [overlayText, duration, animationStyle, audioPath, polling]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep autoGenRef pointing at the latest startGeneration
   useEffect(() => {
@@ -214,6 +216,33 @@ export default function VideoStudioPage() {
               <span>30s</span>
               <span>45s</span>
               <span>60s</span>
+            </div>
+          </div>
+
+          {/* Animation Style Picker */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Animation Style</label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { value: 'ken_burns', label: '🔍 Ken Burns',  desc: 'Slow zoom-in' },
+                { value: 'zoom_out',  label: '🔭 Zoom Out',   desc: 'Slow zoom-out' },
+                { value: 'slide',     label: '↔️ Slide',      desc: 'Pan left→right' },
+                { value: 'static',   label: '🖼️ Static',     desc: 'No animation' },
+              ].map(({ value, label, desc }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setAnimationStyle(value)}
+                  className={`flex flex-col items-center gap-0.5 px-2 py-2.5 rounded-lg border text-xs font-medium transition-colors ${
+                    animationStyle === value
+                      ? 'border-purple-500 bg-purple-50 text-purple-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-purple-300 hover:bg-purple-50'
+                  }`}
+                >
+                  <span>{label}</span>
+                  <span className="text-gray-400 font-normal">{desc}</span>
+                </button>
+              ))}
             </div>
           </div>
 

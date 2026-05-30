@@ -32,12 +32,12 @@ func (r *Repository) CreateJob(ctx context.Context, job *models.VideoJob) (*mode
 	query := `
 		INSERT INTO video_jobs
 			(id, post_id, user_id, status, input_images, overlay_text,
-			 audio_path, duration_seconds, created_at, updated_at)
+			 audio_path, duration_seconds, animation_style, created_at, updated_at)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
 		RETURNING id, post_id, user_id, status, input_images, overlay_text,
-		          audio_path, output_path, duration_seconds, error_message,
-		          created_at, updated_at`
+		          audio_path, output_path, duration_seconds, animation_style,
+		          error_message, created_at, updated_at`
 
 	row := r.db.QueryRow(ctx, query,
 		job.ID,
@@ -48,6 +48,7 @@ func (r *Repository) CreateJob(ctx context.Context, job *models.VideoJob) (*mode
 		job.OverlayText,
 		job.AudioPath,
 		job.DurationSeconds,
+		job.AnimationStyle,
 	)
 
 	return scanJob(row)
@@ -57,8 +58,8 @@ func (r *Repository) CreateJob(ctx context.Context, job *models.VideoJob) (*mode
 func (r *Repository) GetJob(ctx context.Context, id uuid.UUID) (*models.VideoJob, error) {
 	query := `
 		SELECT id, post_id, user_id, status, input_images, overlay_text,
-		       audio_path, output_path, duration_seconds, error_message,
-		       created_at, updated_at
+		       audio_path, output_path, duration_seconds, animation_style,
+		       error_message, created_at, updated_at
 		FROM video_jobs
 		WHERE id = $1`
 
@@ -88,8 +89,8 @@ func (r *Repository) UpdateJobStatus(ctx context.Context, id uuid.UUID, status, 
 func (r *Repository) ListJobsByUser(ctx context.Context, userID uuid.UUID) ([]*models.VideoJob, error) {
 	query := `
 		SELECT id, post_id, user_id, status, input_images, overlay_text,
-		       audio_path, output_path, duration_seconds, error_message,
-		       created_at, updated_at
+		       audio_path, output_path, duration_seconds, animation_style,
+		       error_message, created_at, updated_at
 		FROM video_jobs
 		WHERE user_id = $1
 		ORDER BY created_at DESC`
@@ -134,6 +135,7 @@ func scanJob(s rowScanner) (*models.VideoJob, error) {
 		&audioPath,
 		&outputPath,
 		&job.DurationSeconds,
+		&job.AnimationStyle,
 		&errMsg,
 		&createdAt,
 		&updatedAt,
