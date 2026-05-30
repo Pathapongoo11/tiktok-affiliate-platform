@@ -107,11 +107,20 @@ func (h *Handler) handleOAuthExchange(w http.ResponseWriter, r *http.Request, co
 		return
 	}
 
+	// Fetch the real display name from TikTok right after the token exchange.
+	// Falls back to the OpenID if the call fails so OAuth still completes.
+	displayName := token.OpenID
+	if userInfo, err := h.client.GetUserInfo(ctx, token.AccessToken); err == nil && userInfo.DisplayName != "" {
+		displayName = userInfo.DisplayName
+	} else if err != nil {
+		log.Printf("[TikTok] GetUserInfo warning (non-fatal): %v", err)
+	}
+
 	account := &TikTokAccountRecord{
 		ID:             uuid.New(),
 		UserID:         userID,
 		TikTokUserID:   token.OpenID,
-		DisplayName:    token.OpenID, // Will be updated when user info is fetched later
+		DisplayName:    displayName,
 		AccessToken:    token.AccessToken,
 		RefreshToken:   token.RefreshToken,
 		TokenExpiresAt: time.Now().Add(time.Duration(token.ExpiresIn) * time.Second),

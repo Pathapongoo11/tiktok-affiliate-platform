@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -102,5 +103,78 @@ func (c *Client) PostVideo(ctx context.Context, req PostVideoRequest) (*PostVide
 		uploadResp.Body.Close()
 	}
 
-	return &PostVideoResponse{PublishID: initResp.Data.PublishID, Status: "uploading"}, nil
+	// TikTok video publishing is async: the upload gives us a publish_id, and we
+	// must poll /v2/post/publish/status/fetch/ until PUBLISH_COMPLETE to get the
+	// real video_id that can be used to query analytics.
+	videoID, err := c.pollPublishStatus(ctx, req.AccessToken, initResp.Data.PublishID)
+	if err != nil {
+		// Return partial success with publish_id so the caller can log it,
+		// but surface the error so the post status can be set to "failed".
+		return nil, fmt.Errorf("publish status: %w", err)
+	}
+
+	return &PostVideoResponse{
+		PublishID:     initResp.Data.PublishID,
+		TikTokVideoID: videoID,
+		Status:        "published",
+	}, nil
+}
+
+// pollPublishStatus polls the TikTok publish-status endpoint until the video
+// reaches PUBLISH_COMPLETE (returns video_id) or PUBLISH_FAILED (returns error).
+// It gives up after 90 s of polling in 5 s intervals.
+func (c *Client) pollPublishStatus(ctx context.Context, accessToken, publishID string) (string, error) {
+	const (
+		pollInterval = 5 * time.Second
+		timeout      = 90 * time.Second
+	)
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		body := fmt.Sprintf(`{"publish_id":%q}`, publishID)
+		resp, err := c.doRequest(ctx, "POST",
+			BaseURL+"/post/publish/status/fetch/",
+			strings.NewReader(body), accessToken)
+		if err != nil {
+			return "", fmt.Errorf("fetch status: %w", err)
+		}
+
+		var statusResp struct {
+			Data struct {
+				Status           string `json:"status"`
+				PublishedVideoID string `json:"published_video_id"`
+				FailReason       string `json:"fail_reason"`
+			} `json:"data"`
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		decodeErr := json.NewDecoder(resp.Body).Decode(&statusResp)
+		resp.Body.Close()
+
+		if decodeErr != nil {
+			return "", fmt.Errorf("decode status: %w", decodeErr)
+		}
+		if statusResp.Error.Code != "" && statusResp.Error.Code != "ok" {
+			return "", fmt.Errorf("tiktok error: %s — %s",
+				statusResp.Error.Code, statusResp.Error.Message)
+		}
+
+		switch statusResp.Data.Status {
+		case "PUBLISH_COMPLETE":
+			return statusResp.Data.PublishedVideoID, nil
+		case "PUBLISH_FAILED":
+			return "", fmt.Errorf("TikTok publish failed: %s", statusResp.Data.FailReason)
+		}
+		// Other statuses (PROCESSING_DOWNLOAD, IN_REVIEW, AWAITING_SCHEDULING, …) → keep polling
+
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(pollInterval):
+		}
+	}
+
+	return "", fmt.Errorf("publish status polling timed out after %s (publish_id: %s)", timeout, publishID)
 }
