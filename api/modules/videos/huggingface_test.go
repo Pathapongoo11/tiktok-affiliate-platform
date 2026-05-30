@@ -20,6 +20,7 @@ func TestIsAIStyle(t *testing.T) {
 	cases := map[string]bool{
 		videos.StyleAIVideo:   true,
 		videos.StyleAICartoon: true,
+		videos.StyleAITalking: true,
 		videos.StyleKenBurns:  false,
 		videos.StyleZoomOut:   false,
 		videos.StyleSlide:     false,

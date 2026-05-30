@@ -68,27 +68,11 @@ func GenerateAIVideo(ctx context.Context, cfg VideoConfig, token string) error {
 	if len(cfg.InputImages) == 0 {
 		return fmt.Errorf("no input images provided")
 	}
-	if err := os.MkdirAll(filepath.Dir(cfg.OutputPath), 0o755); err != nil {
-		return fmt.Errorf("failed to create output dir: %w", err)
-	}
-
-	client := newHFClient(token)
 
 	// Stage 1: generate a cartoon image with FLUX.
-	// Prefer the explicit English scene prompt; fall back to overlay text.
-	promptSubject := cfg.ScenePrompt
-	if strings.TrimSpace(promptSubject) == "" {
-		promptSubject = cfg.OverlayText
-	}
-	prompt := buildCartoonPrompt(promptSubject, cfg.AnimationStyle)
-	imgBytes, err := client.textToImage(ctx, prompt)
-	if err != nil {
-		return fmt.Errorf("flux generate step: %w", err)
-	}
-
 	cartoonPath := cfg.OutputPath + ".cartoon.png"
-	if err := os.WriteFile(cartoonPath, imgBytes, 0o644); err != nil {
-		return fmt.Errorf("write cartoon image: %w", err)
+	if err := GenerateAICharacterImage(ctx, cfg, token, cartoonPath); err != nil {
+		return fmt.Errorf("flux generate step: %w", err)
 	}
 	defer os.Remove(cartoonPath)
 
@@ -98,6 +82,34 @@ func GenerateAIVideo(ctx context.Context, cfg VideoConfig, token string) error {
 	animCfg.AnimationStyle = StyleKenBurns // FFmpeg animated path
 	if err := GenerateVideo(animCfg); err != nil {
 		return fmt.Errorf("animate cartoon step: %w", err)
+	}
+	return nil
+}
+
+// GenerateAICharacterImage generates a single character/scene image with FLUX
+// and writes it to destPath. Shared by the ai_cartoon/ai_video pipelines and the
+// ai_talking lip-sync pipeline (which feeds the image to SadTalker).
+func GenerateAICharacterImage(ctx context.Context, cfg VideoConfig, token, destPath string) error {
+	if token == "" {
+		return fmt.Errorf("huggingface token not configured")
+	}
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("failed to create output dir: %w", err)
+	}
+
+	// Prefer the explicit English scene prompt; fall back to overlay text.
+	promptSubject := cfg.ScenePrompt
+	if strings.TrimSpace(promptSubject) == "" {
+		promptSubject = cfg.OverlayText
+	}
+	prompt := buildCartoonPrompt(promptSubject, cfg.AnimationStyle)
+
+	imgBytes, err := newHFClient(token).textToImage(ctx, prompt)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(destPath, imgBytes, 0o644); err != nil {
+		return fmt.Errorf("write character image: %w", err)
 	}
 	return nil
 }

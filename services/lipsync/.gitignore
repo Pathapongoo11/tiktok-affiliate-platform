@@ -1,0 +1,12 @@
+# SadTalker checkout (cloned by install.ps1) — too large to commit
+SadTalker/
+
+# Python venv created by install.ps1
+.venv-sadtalker/
+
+# Per-job scratch + outputs
+work/
+
+# Python bytecode
+__pycache__/
+*.pyc

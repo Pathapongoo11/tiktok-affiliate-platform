@@ -98,7 +98,7 @@ func main() {
 			r.Mount("/tiktok", tiktokHandler.Routes())
 
 			// Video engine
-			videoSvc := videos.NewService(pool, uploadsDir, cfg.HuggingFaceToken)
+			videoSvc := videos.NewService(pool, uploadsDir, cfg.HuggingFaceToken, cfg.LipsyncURL)
 			videoHandler := videos.NewHandler(videoSvc, uploadsDir)
 			r.Mount("/videos", videoHandler.Routes())
 		})

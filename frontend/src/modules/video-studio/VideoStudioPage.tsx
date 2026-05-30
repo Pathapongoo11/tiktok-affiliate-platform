@@ -252,10 +252,11 @@ export default function VideoStudioPage() {
               <span className="text-xs font-semibold text-purple-600">✨ AI-Powered</span>
               <span className="text-[10px] text-gray-400">(generates a brand-new AI scene image, then animates it)</span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {[
-                { value: 'ai_video',   label: '🤖 AI Motion',  desc: '3D product render' },
-                { value: 'ai_cartoon', label: '🎨 AI Cartoon', desc: 'Dramatic character ad' },
+                { value: 'ai_video',   label: '🤖 AI Motion',  desc: '3D render' },
+                { value: 'ai_cartoon', label: '🎨 AI Cartoon', desc: 'Character ad' },
+                { value: 'ai_talking', label: '🗣️ AI Talking', desc: 'Lip-sync + voice' },
               ].map(({ value, label, desc }) => (
                 <button
                   key={value}
@@ -273,8 +274,15 @@ export default function VideoStudioPage() {
               ))}
             </div>
 
-            {/* Scene Prompt — only shown for AI styles */}
-            {(animationStyle === 'ai_cartoon' || animationStyle === 'ai_video') && (
+            {/* ai_talking needs an audio track */}
+            {animationStyle === 'ai_talking' && !audioPath && (
+              <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                🗣️ AI Talking ต้องอัปโหลดไฟล์เสียง (ด้านล่าง) ก่อน — ตัวละครจะขยับปากพูดตามเสียงนั้น
+              </p>
+            )}
+
+            {/* Scene Prompt — shown for all AI styles */}
+            {(animationStyle === 'ai_cartoon' || animationStyle === 'ai_video' || animationStyle === 'ai_talking') && (
               <div className="space-y-1.5 pt-2 border-t border-dashed border-pink-200">
                 <label className="block text-sm font-medium text-gray-700">
                   🎬 Scene Prompt <span className="text-pink-600">(English — describe the scene/character)</span>
