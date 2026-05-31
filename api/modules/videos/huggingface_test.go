@@ -128,3 +128,13 @@ func TestBuildCartoonPrompt_CartoonVsAIVideo_DifferentStyles(t *testing.T) {
 	aivideo := videos.BuildCartoonPrompt("X", videos.StyleAIVideo)
 	assert.NotEqual(t, cartoon, aivideo, "the two styles should produce different prompts")
 }
+
+func TestBuildCartoonPrompt_Talking_BiasesTowardDetectableFace(t *testing.T) {
+	// ai_talking feeds SadTalker, which needs a clear front-facing human face.
+	p := videos.BuildCartoonPrompt("a friendly doctor", videos.StyleAITalking)
+	assert.Contains(t, p, "a friendly doctor")
+	assert.Contains(t, p, "front facing")
+	assert.Contains(t, p, "portrait")
+	// Should NOT use the dramatic 3D cartoon styling that breaks face detection.
+	assert.NotContains(t, p, "Pixar")
+}

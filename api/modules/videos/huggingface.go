@@ -132,11 +132,20 @@ func buildCartoonPrompt(subject, style string) string {
 		"eye-catching TikTok advertisement, dynamic close-up, vertical 9:16 composition, " +
 		"depth of field, high detail, trending product ad"
 
-	if style == StyleAIVideo {
+	switch style {
+	case StyleAIVideo:
 		// ai_video → cleaner glossy product-render look.
 		styleKeywords = "glossy 3D product render, studio lighting, vibrant colors, " +
 			"floating product showcase, clean gradient background, dynamic angle, " +
 			"vertical 9:16 composition, high detail, premium advertisement"
+	case StyleAITalking:
+		// ai_talking → the image is fed to SadTalker, which needs a clear,
+		// front-facing, human-proportioned face to detect. Bias the prompt toward
+		// a realistic centered portrait so face detection succeeds.
+		styleKeywords = "photorealistic portrait, extreme close-up of the face, " +
+			"front facing, looking straight at the camera, both eyes visible, " +
+			"neutral background, soft studio lighting, symmetrical face, " +
+			"sharp focus, high detail headshot"
 	}
 
 	return fmt.Sprintf("%s, %s", subject, styleKeywords)
