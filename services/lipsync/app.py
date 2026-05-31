@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 # ── Configuration ────────────────────────────────────────────────────────────
@@ -130,14 +130,61 @@ def _run_sadtalker(job_id: str, image_path: Path, audio_path: Path, job_dir: Pat
 def health() -> JSONResponse:
     gpu = _gpu_info()
     ready = SADTALKER_DIR.exists() and (SADTALKER_DIR / "inference.py").exists()
+    img2img_ready = False
+    try:
+        import img2img as _i2i
+        img2img_ready = _i2i.is_available()
+    except Exception:  # noqa: BLE001
+        pass
     return JSONResponse(
         {
             "status": "ok" if ready else "sadtalker_not_found",
             "sadtalker_dir": str(SADTALKER_DIR),
             "sadtalker_ready": ready,
+            "img2img_ready": img2img_ready,
             "gpu": gpu,
         }
     )
+
+
+@app.post("/img2img")
+async def img2img_endpoint(image: UploadFile = File(...), prompt: str = Form(...), strength: str = Form("0.55")) -> FileResponse:
+    """Stylize an uploaded product image with SDXL img2img, preserving its shape.
+
+    Returns the stylized PNG. Used by the Go API for AI styles so the generated
+    cartoon/3D image is based on the *actual* product photo (GOAL 1).
+    """
+    try:
+        import img2img as i2i
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"img2img unavailable: {exc}")
+    if not i2i.is_available():
+        raise HTTPException(503, "img2img requires diffusers + CUDA torch (not installed)")
+
+    prompt = prompt.strip()
+    if not prompt:
+        raise HTTPException(400, "prompt is required")
+    try:
+        s = float(strength)
+    except ValueError:
+        s = 0.55
+
+    src = WORK_DIR / f"i2i_src_{uuid.uuid4().hex}{_suffix(image.filename, '.png')}"
+    dst = WORK_DIR / f"i2i_out_{uuid.uuid4().hex}.png"
+    _save(image, src)
+    try:
+        i2i.stylize_image(str(src), str(dst), prompt, strength=s)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"img2img failed: {type(exc).__name__}: {exc}")
+    finally:
+        try:
+            src.unlink()
+        except OSError:
+            pass
+
+    if not dst.exists() or dst.stat().st_size == 0:
+        raise HTTPException(500, "img2img produced no image")
+    return FileResponse(str(dst), media_type="image/png", filename="stylized.png")
 
 
 @app.post("/generate", status_code=202)

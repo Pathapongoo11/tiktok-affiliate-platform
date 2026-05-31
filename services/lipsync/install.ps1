@@ -72,6 +72,12 @@ Write-Host "Installing SadTalker requirements..." -ForegroundColor Yellow
     pydub scipy kornia tqdm yacs pyyaml joblib scikit-image basicsr==1.4.2 `
     facexlib gfpgan av safetensors
 
+# diffusers img2img (GOAL 1: stylize the real product photo into a cartoon).
+# Pinned to versions compatible with torch 2.2.2 (newer diffusers calls torch.xpu).
+Write-Host "Installing diffusers for img2img..." -ForegroundColor Yellow
+& $VenvPython -m pip install `
+    "diffusers==0.27.2" "transformers==4.39.3" "accelerate==0.29.3" "huggingface_hub<0.26"
+
 # numba/opencv pull in numpy 2.x, but torch 2.2.2 + SadTalker need numpy < 2.
 # Re-pin AFTER the bulk install so it sticks. (opencv warns but works fine.)
 Write-Host "Pinning numpy to 1.26.4 (required by torch 2.2.2 + SadTalker)..." -ForegroundColor Yellow

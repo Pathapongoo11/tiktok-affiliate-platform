@@ -69,6 +69,57 @@ func TestSynthesizeSpeech_ServiceError_Propagates(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// StylizeImage (img2img)
+// ---------------------------------------------------------------------------
+
+func TestStylizeImage_NoURL_ReturnsError(t *testing.T) {
+	err := videos.StylizeImage(context.Background(), "", "img.png", "make it cartoon", filepath.Join(t.TempDir(), "out.png"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "url not configured")
+}
+
+func TestStylizeImage_HappyPath_WritesPNG(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.png")
+	out := filepath.Join(dir, "out.png")
+	require.NoError(t, os.WriteFile(src, []byte("fake-png"), 0o644))
+
+	var gotPrompt string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/img2img", r.URL.Path)
+		require.NoError(t, r.ParseMultipartForm(1<<20))
+		gotPrompt = r.FormValue("prompt")
+		_, _, ferr := r.FormFile("image")
+		assert.NoError(t, ferr)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("STYLIZED-PNG"))
+	}))
+	defer srv.Close()
+
+	err := videos.StylizeImage(context.Background(), srv.URL, src, "cartoon product", out)
+	require.NoError(t, err)
+	assert.Equal(t, "cartoon product", gotPrompt)
+
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Equal(t, "STYLIZED-PNG", string(got))
+}
+
+func TestStylizeImage_ServiceError_Propagates(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.png")
+	require.NoError(t, os.WriteFile(src, []byte("x"), 0o644))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "model not loaded", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	err := videos.StylizeImage(context.Background(), srv.URL, src, "p", filepath.Join(dir, "out.png"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "503")
+}
+
+// ---------------------------------------------------------------------------
 // Guards (no network)
 // ---------------------------------------------------------------------------
 

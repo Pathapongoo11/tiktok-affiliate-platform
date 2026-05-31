@@ -96,6 +96,56 @@ func SynthesizeSpeech(ctx context.Context, baseURL, text, voice, destPath string
 	return nil
 }
 
+// StylizeImage sends a product image + prompt to the microservice /img2img
+// endpoint (SDXL img2img on the GPU) and writes the stylized PNG to destPath.
+// This preserves the real product's shape while applying a cartoon/3D look.
+func StylizeImage(ctx context.Context, baseURL, srcImagePath, prompt, destPath string) error {
+	if baseURL == "" {
+		return fmt.Errorf("lipsync service url not configured")
+	}
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("failed to create output dir: %w", err)
+	}
+
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	if err := addFilePart(w, "image", srcImagePath); err != nil {
+		return err
+	}
+	_ = w.WriteField("prompt", prompt)
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("close multipart: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/img2img", body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("http: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("img2img returned %d: %s", resp.StatusCode, truncate(string(b), 200))
+	}
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create stylized file: %w", err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return fmt.Errorf("write stylized file: %w", err)
+	}
+	return nil
+}
+
 // GenerateTalkingVideo turns the source image into a talking-head MP4 using the
 // lip-sync microservice, then writes the result to cfg.OutputPath.
 //

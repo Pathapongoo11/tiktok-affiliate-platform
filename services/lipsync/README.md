@@ -67,6 +67,7 @@ docker-compose up -d api
 | `GET`  | `/jobs/{id}` | — | `{status, output_path, error}` |
 | `GET`  | `/jobs/{id}/download` | — | MP4 bytes |
 | `POST` | `/tts` | JSON `{text, voice}` | MP3 bytes (Thai TTS via edge-tts) |
+| `POST` | `/img2img` | form `image, prompt, strength` | PNG (SD 1.5 stylize, preserves product) |
 
 The `/tts` endpoint synthesizes speech with edge-tts (free, no key). Send **JSON**
 (not form fields) so non-ASCII Thai text isn't mangled. Default voice:
