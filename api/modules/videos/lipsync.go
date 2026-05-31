@@ -25,9 +25,13 @@ import (
 //	POST /generate            multipart {image, audio}  → 202 {job_id, status}
 //	GET  /jobs/{id}                                     → {status, output_path, error}
 //	GET  /jobs/{id}/download                            → MP4 bytes
+//	POST /tts                 form {text, voice}        → MP3 bytes
 const (
 	lipsyncPollInterval = 5 * time.Second
 	lipsyncMaxWait      = 15 * time.Minute
+
+	// DefaultTTSVoice is the edge-tts voice used when none is specified.
+	DefaultTTSVoice = "th-TH-PremwadeeNeural"
 )
 
 // lipsyncClient talks to the SadTalker microservice.
@@ -41,6 +45,55 @@ func newLipsyncClient(baseURL string) *lipsyncClient {
 		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 2 * time.Minute},
 	}
+}
+
+// SynthesizeSpeech calls the microservice /tts endpoint to turn text into speech
+// (Thai by default) and writes the resulting MP3 to destPath. voice may be empty
+// to use the default Thai voice.
+func SynthesizeSpeech(ctx context.Context, baseURL, text, voice, destPath string) error {
+	if baseURL == "" {
+		return fmt.Errorf("lipsync service url not configured")
+	}
+	if voice == "" {
+		voice = DefaultTTSVoice
+	}
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("failed to create output dir: %w", err)
+	}
+
+	// Send JSON (UTF-8) — multipart form fields carry no charset and mangled
+	// Thai text to '?' on the Python side.
+	payload, err := json.Marshal(map[string]string{"text": text, "voice": voice})
+	if err != nil {
+		return fmt.Errorf("marshal tts request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/tts", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 2 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("http: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("tts returned %d: %s", resp.StatusCode, truncate(string(b), 200))
+	}
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create audio file: %w", err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return fmt.Errorf("write audio file: %w", err)
+	}
+	return nil
 }
 
 // GenerateTalkingVideo turns the source image into a talking-head MP4 using the

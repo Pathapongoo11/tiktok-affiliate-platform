@@ -31,10 +31,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 # ── Configuration ────────────────────────────────────────────────────────────
+
+# Default Thai voice for edge-tts. Premade neural voices (free, no API key):
+#   th-TH-PremwadeeNeural (female), th-TH-NiwatNeural (male)
+DEFAULT_TTS_VOICE = os.getenv("TTS_VOICE", "th-TH-PremwadeeNeural")
 
 SADTALKER_DIR = Path(os.getenv("SADTALKER_DIR", "./SadTalker")).resolve()
 WORK_DIR = Path(os.getenv("LIPSYNC_WORK_DIR", "./work")).resolve()
@@ -162,6 +166,42 @@ async def generate(image: UploadFile = File(...), audio: UploadFile = File(...))
     return {"job_id": job_id, "status": "pending"}
 
 
+@app.post("/tts")
+async def tts(request: Request) -> FileResponse:
+    """Synthesize speech from text (Thai by default) and return an MP3.
+
+    Accepts either JSON {"text", "voice"} or form fields. JSON is preferred —
+    multipart form fields don't carry a charset, so non-ASCII (Thai) text can be
+    mangled to '?'. The Go client sends JSON for this reason.
+
+    Uses edge-tts (free Microsoft neural voices, no API key).
+    """
+    text = ""
+    voice = DEFAULT_TTS_VOICE
+    ctype = request.headers.get("content-type", "")
+    if ctype.startswith("application/json"):
+        data = await request.json()
+        text = (data.get("text") or "").strip()
+        voice = (data.get("voice") or DEFAULT_TTS_VOICE).strip() or DEFAULT_TTS_VOICE
+    else:
+        form = await request.form()
+        text = (form.get("text") or "").strip()
+        voice = (form.get("voice") or DEFAULT_TTS_VOICE).strip() or DEFAULT_TTS_VOICE
+
+    if not text:
+        raise HTTPException(400, "text is required")
+
+    out = WORK_DIR / f"tts_{uuid.uuid4().hex}.mp3"
+    try:
+        await synthesize_speech(text, voice, out)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"tts failed: {type(exc).__name__}: {exc}")
+
+    if not out.exists() or out.stat().st_size == 0:
+        raise HTTPException(500, "tts produced no audio")
+    return FileResponse(str(out), media_type="audio/mpeg", filename="speech.mp3")
+
+
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str) -> dict:
     with _jobs_lock:
@@ -189,6 +229,39 @@ def download(job_id: str) -> FileResponse:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+async def synthesize_speech(text: str, voice: str, dest: Path) -> None:
+    """Render `text` to an MP3 at `dest` using edge-tts' in-process async API.
+
+    Awaited directly from the async handler (no asyncio.run — that errors inside
+    FastAPI's running event loop). In-process avoids the detached-subprocess
+    environment that made the Microsoft token handshake fail with 403.
+
+    edge-tts can still hit a transient 403, so retry a few times.
+    Raises RuntimeError on persistent failure.
+    """
+    import asyncio
+    import edge_tts
+
+    last_err = ""
+    for attempt in range(1, 4):
+        try:
+            communicate = edge_tts.Communicate(text, voice)
+            await communicate.save(str(dest))
+            if dest.exists() and dest.stat().st_size > 0:
+                return
+            last_err = "edge-tts produced an empty file"
+        except Exception as exc:  # noqa: BLE001
+            last_err = f"{type(exc).__name__}: {exc}"
+        if dest.exists():
+            try:
+                dest.unlink()
+            except OSError:
+                pass
+        if attempt < 3:
+            await asyncio.sleep(2)
+    raise RuntimeError(f"edge-tts failed after 3 attempts: {last_err}")
+
 
 def _save(upload: UploadFile, dest: Path) -> None:
     with dest.open("wb") as f:

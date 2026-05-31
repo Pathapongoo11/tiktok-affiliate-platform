@@ -2,6 +2,7 @@ package videos_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,57 @@ import (
 
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/videos"
 )
+
+// ---------------------------------------------------------------------------
+// SynthesizeSpeech
+// ---------------------------------------------------------------------------
+
+func TestSynthesizeSpeech_NoURL_ReturnsError(t *testing.T) {
+	err := videos.SynthesizeSpeech(context.Background(), "", "hi", "", filepath.Join(t.TempDir(), "a.mp3"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "url not configured")
+}
+
+func TestSynthesizeSpeech_HappyPath_WritesMP3(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "speech.mp3")
+
+	var gotText, gotVoice string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/tts", r.URL.Path)
+		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		var body struct {
+			Text  string `json:"text"`
+			Voice string `json:"voice"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		gotText = body.Text
+		gotVoice = body.Voice
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = w.Write([]byte("FAKE-MP3"))
+	}))
+	defer srv.Close()
+
+	err := videos.SynthesizeSpeech(context.Background(), srv.URL, "สวัสดี", "", out)
+	require.NoError(t, err)
+
+	assert.Equal(t, "สวัสดี", gotText)
+	assert.Equal(t, videos.DefaultTTSVoice, gotVoice, "empty voice should default to Thai voice")
+
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Equal(t, "FAKE-MP3", string(got))
+}
+
+func TestSynthesizeSpeech_ServiceError_Propagates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	err := videos.SynthesizeSpeech(context.Background(), srv.URL, "hi", "th-TH-NiwatNeural", filepath.Join(t.TempDir(), "a.mp3"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
 
 // ---------------------------------------------------------------------------
 // Guards (no network)

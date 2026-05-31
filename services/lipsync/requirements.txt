@@ -3,3 +3,6 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20
+# Free Thai (and multilingual) neural TTS — no API key required.
+# >=7.x required: older releases hit a 403 token handshake against MS servers.
+edge-tts>=7.2.8
