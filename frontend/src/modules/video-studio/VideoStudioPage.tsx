@@ -17,8 +17,6 @@ export default function VideoStudioPage() {
   const [error, setError] = useState('')
   const [videoError, setVideoError] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Ref so onDropImages (useCallback with [] deps) can call the latest startGeneration
-  const autoGenRef = useRef<(paths: string[]) => void>(() => {})
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
@@ -63,13 +61,9 @@ export default function VideoStudioPage() {
     }
   }, [overlayText, scenePrompt, duration, animationStyle, audioPath, polling]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep autoGenRef pointing at the latest startGeneration
-  useEffect(() => {
-    autoGenRef.current = (paths: string[]) => {
-      if (!polling) startGeneration(paths)
-    }
-  }) // intentionally runs every render
-
+  // Upload images only — generation is triggered manually via the Generate button.
+  // (Auto-generating on drop fired with a stale animationStyle/scenePrompt before
+  //  the user finished choosing them — see BUG 1 in PENDING_PLAN.md.)
   const onDropImages = useCallback(async (files: File[]) => {
     setUploading(true)
     setError('')
@@ -83,18 +77,13 @@ export default function VideoStudioPage() {
         })
         newPaths.push(res.data.path || res.data.filePath || res.data.url)
       }
-      setUploadedPaths((prev) => {
-        const all = [...prev, ...newPaths]
-        // Auto-generate immediately after upload — use ref to access latest startGeneration
-        setTimeout(() => autoGenRef.current(all), 0)
-        return all
-      })
+      setUploadedPaths((prev) => [...prev, ...newPaths])
     } catch {
       setError('Image upload failed.')
     } finally {
       setUploading(false)
     }
-  }, []) // deps intentionally empty — uses autoGenRef
+  }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: onDropImages,
@@ -121,8 +110,14 @@ export default function VideoStudioPage() {
     }
   }
 
-  // Manual "Generate Video" button (re-generate or generate when auto didn't fire)
-  const generateVideo = () => startGeneration(uploadedPaths)
+  // Manual "Generate Video" trigger.
+  // AI styles generate from the Scene Prompt and ignore the uploaded photo, but
+  // the backend still expects a non-empty input_images array — send a placeholder.
+  const generateVideo = () => {
+    const isAI = animationStyle.startsWith('ai_')
+    const paths = uploadedPaths.length > 0 ? uploadedPaths : (isAI ? ['ai-generated'] : [])
+    startGeneration(paths)
+  }
 
   const handleDownload = () => {
     if (!job?.outputPath) return
@@ -131,6 +126,10 @@ export default function VideoStudioPage() {
     a.download = 'generated-video.mp4'
     a.click()
   }
+
+  // AI styles generate a brand-new image from Scene Prompt (they do NOT use the
+  // uploaded photo). FFmpeg styles animate the uploaded photo itself.
+  const isAIStyle = animationStyle.startsWith('ai_')
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -160,8 +159,15 @@ export default function VideoStudioPage() {
             <p className="text-gray-600 font-medium">
               {isDragActive ? 'Drop images here...' : 'Drag & drop images'}
             </p>
-            <p className="text-sm text-gray-400 mt-1">JPG, PNG, WebP • Video generates automatically after upload</p>
+            <p className="text-sm text-gray-400 mt-1">JPG, PNG, WebP • Then pick a style and press Generate</p>
           </div>
+
+          {isAIStyle && (
+            <p className="text-[11px] text-pink-600 bg-pink-50 border border-pink-200 rounded-md px-2 py-1.5">
+              ⚠️ AI styles สร้างภาพใหม่จาก "Scene Prompt" — ไม่ได้ใช้รูปที่อัปโหลด
+              (รูปที่อัปใช้กับสไตล์ Ken Burns / Zoom / Slide / Static เท่านั้น)
+            </p>
+          )}
 
           {uploading && (
             <p className="text-sm text-purple-600 text-center animate-pulse">Uploading...</p>
@@ -324,10 +330,10 @@ export default function VideoStudioPage() {
           </div>
         </div>
 
-        {/* Generate Button */}
+        {/* Generate Button — AI styles don't need an uploaded image (FLUX makes one) */}
         <button
           onClick={generateVideo}
-          disabled={uploadedPaths.length === 0 || polling}
+          disabled={(!isAIStyle && uploadedPaths.length === 0) || polling}
           className="w-full py-3 bg-purple-600 text-white rounded-xl text-base font-semibold hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
         >
           {polling ? (
