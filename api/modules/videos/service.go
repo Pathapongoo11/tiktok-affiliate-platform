@@ -42,6 +42,18 @@ func (s *Service) CreateVideoJob(ctx context.Context, userID uuid.UUID, req Crea
 	if dur == 0 {
 		dur = 30
 	}
+
+	audioPath := req.AudioPath
+	// ai_talking with text but no audio → synthesize Thai speech up front.
+	// edge-tts is fast (~1-2s); the resulting MP3 is stored like any uploaded audio.
+	if req.AnimationStyle == StyleAITalking && audioPath == "" && req.TTSText != "" && s.lipsyncURL != "" {
+		if p, err := s.synthesizeTTS(ctx, req.TTSText, req.TTSVoice); err != nil {
+			log.Printf("[video] TTS synthesis failed (will fall back): %v", err)
+		} else {
+			audioPath = p
+		}
+	}
+
 	job := &models.VideoJob{
 		ID:              uuid.New(),
 		UserID:          userID,
@@ -49,7 +61,7 @@ func (s *Service) CreateVideoJob(ctx context.Context, userID uuid.UUID, req Crea
 		Status:          "pending",
 		InputImages:     req.InputImages,
 		OverlayText:     req.OverlayText,
-		AudioPath:       req.AudioPath,
+		AudioPath:       audioPath,
 		DurationSeconds: dur,
 		AnimationStyle:  req.AnimationStyle,
 		ScenePrompt:     req.ScenePrompt,
@@ -150,6 +162,17 @@ func (s *Service) renderTalking(ctx context.Context, cfg VideoConfig) error {
 		return fmt.Errorf("lipsync: %w", err)
 	}
 	return nil
+}
+
+// synthesizeTTS renders text to a Thai-voice MP3 via the lip-sync microservice
+// and returns the saved file path (under uploadsDir/audio).
+func (s *Service) synthesizeTTS(ctx context.Context, text, voice string) (string, error) {
+	filename := fmt.Sprintf("tts_%s.mp3", uuid.New())
+	fsPath := filepath.Join(s.uploadsDir, "audio", filename)
+	if err := SynthesizeSpeech(ctx, s.lipsyncURL, text, voice, fsPath); err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(fsPath), nil
 }
 
 // GetJob returns a single job by ID.

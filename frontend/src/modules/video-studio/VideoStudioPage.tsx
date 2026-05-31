@@ -10,6 +10,7 @@ export default function VideoStudioPage() {
   const [duration, setDuration] = useState(15)
   const [animationStyle, setAnimationStyle] = useState('ken_burns')
   const [audioPath, setAudioPath] = useState('')
+  const [ttsText, setTtsText] = useState('')
   const [uploading, setUploading] = useState(false)
   const [audioUploading, setAudioUploading] = useState(false)
   const [job, setJob] = useState<VideoJob | null>(null)
@@ -38,6 +39,7 @@ export default function VideoStudioPage() {
       }
       if (scenePrompt) payload.scene_prompt = scenePrompt
       if (audioPath) payload.audio_path = audioPath
+      if (!audioPath && ttsText) payload.tts_text = ttsText
       const res = await client.post('/videos/generate', payload)
       const jobId = res.data.id || res.data.jobId
       pollRef.current = setInterval(async () => {
@@ -59,7 +61,7 @@ export default function VideoStudioPage() {
       setPolling(false)
       setError('Failed to start video generation.')
     }
-  }, [overlayText, scenePrompt, duration, animationStyle, audioPath, polling]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [overlayText, scenePrompt, duration, animationStyle, audioPath, ttsText, polling]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Upload images only — generation is triggered manually via the Generate button.
   // (Auto-generating on drop fired with a stale animationStyle/scenePrompt before
@@ -280,11 +282,26 @@ export default function VideoStudioPage() {
               ))}
             </div>
 
-            {/* ai_talking needs an audio track */}
-            {animationStyle === 'ai_talking' && !audioPath && (
-              <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
-                🗣️ AI Talking ต้องอัปโหลดไฟล์เสียง (ด้านล่าง) ก่อน — ตัวละครจะขยับปากพูดตามเสียงนั้น
-              </p>
+            {/* ai_talking: type Thai text → auto TTS, or upload your own audio below */}
+            {animationStyle === 'ai_talking' && (
+              <div className="space-y-1.5 pt-2 border-t border-dashed border-pink-200">
+                <label className="block text-sm font-medium text-gray-700">
+                  🎤 คำพูด (Voice Script) <span className="text-pink-600">— พิมพ์ภาษาไทย ระบบจะสร้างเสียงให้</span>
+                </label>
+                <textarea
+                  value={ttsText}
+                  onChange={(e) => setTtsText(e.target.value)}
+                  rows={2}
+                  disabled={!!audioPath}
+                  placeholder="เช่น สวัสดีค่ะ สินค้าตัวนี้ดีมากเลยนะคะ กดสั่งที่ตะกร้าด้านล่างได้เลย"
+                  className="w-full px-3 py-2 border border-pink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 disabled:bg-gray-100 disabled:text-gray-400"
+                />
+                <p className="text-[11px] text-gray-400 leading-snug">
+                  {audioPath
+                    ? '🔊 ใช้ไฟล์เสียงที่อัปโหลดแล้ว (ลบไฟล์เสียงด้านล่างถ้าอยากพิมพ์ข้อความแทน)'
+                    : '💡 พิมพ์ข้อความไทย → ตัวละครจะพูดตามนั้น (เสียงผู้หญิงไทย) หรืออัปโหลดไฟล์เสียงเองด้านล่างก็ได้'}
+                </p>
+              </div>
             )}
 
             {/* Scene Prompt — shown for all AI styles */}

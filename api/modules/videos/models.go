@@ -31,8 +31,10 @@ type CreateJobRequest struct {
 	OverlayText    string     `json:"overlay_text"`           // marketing text burned onto the video (Thai OK)
 	ScenePrompt    string     `json:"scene_prompt,omitempty"` // English scene description for AI image gen
 	AudioPath      string     `json:"audio_path,omitempty"`
+	TTSText        string     `json:"tts_text,omitempty"`  // ai_talking: synthesize this text to speech (Thai OK)
+	TTSVoice       string     `json:"tts_voice,omitempty"` // edge-tts voice; default th-TH-PremwadeeNeural
 	DurationSec    int        `json:"duration_seconds"`
-	AnimationStyle string     `json:"animation_style,omitempty"` // "" | "ken_burns" | "zoom_out" | "slide" | "static" | "ai_cartoon" | "ai_video"
+	AnimationStyle string     `json:"animation_style,omitempty"` // "" | "ken_burns" | "zoom_out" | "slide" | "static" | "ai_cartoon" | "ai_video" | "ai_talking"
 }
 
 // VideoConfig holds FFmpeg generation parameters.
@@ -40,9 +42,11 @@ type VideoConfig struct {
 	InputImages    []string // file paths to product images
 	OverlayText    string   // text to overlay on the video (Thai OK — burned by FFmpeg)
 	ScenePrompt    string   // English scene description for AI image generation (FLUX)
-	AudioPath      string   // optional background music path
+	AudioPath      string   // optional background music / voice path
+	TTSText        string   // ai_talking: text to synthesize to speech when AudioPath is empty
+	TTSVoice       string   // edge-tts voice (default th-TH-PremwadeeNeural)
 	OutputPath     string   // destination MP4 path
 	DurationSec    int      // target duration in seconds (15–60)
 	FPS            int      // frames per second (default 1 for slideshow, 30 for animated)
-	AnimationStyle string   // "" / "ken_burns" / "zoom_out" / "slide" / "static" / "ai_cartoon" / "ai_video"
+	AnimationStyle string   // "" / "ken_burns" / "zoom_out" / "slide" / "static" / "ai_cartoon" / "ai_video" / "ai_talking"
 }
