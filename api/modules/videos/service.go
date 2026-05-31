@@ -134,7 +134,54 @@ func (s *Service) render(ctx context.Context, cfg VideoConfig) error {
 	if cfg.AnimationStyle == StyleAITalking {
 		return s.renderTalking(ctx, cfg)
 	}
-	return GenerateAIVideo(ctx, cfg, s.hfToken)
+	return s.renderAICartoon(ctx, cfg)
+}
+
+// renderAICartoon produces the AI base image then animates it with Ken Burns.
+//
+// GOAL 1: when the user uploaded a real product photo (not the "ai-generated"
+// placeholder) and the img2img service is available, stylize THAT photo so the
+// real product is preserved. Otherwise fall back to FLUX text→image.
+func (s *Service) renderAICartoon(ctx context.Context, cfg VideoConfig) error {
+	basePath := cfg.OutputPath + ".base.png"
+
+	if s.lipsyncURL != "" && hasRealImage(cfg.InputImages) {
+		prompt := buildCartoonPrompt(firstNonEmpty(cfg.ScenePrompt, cfg.OverlayText), cfg.AnimationStyle)
+		if err := StylizeImage(ctx, s.lipsyncURL, cfg.InputImages[0], prompt, basePath); err != nil {
+			log.Printf("[video] img2img failed (%v) — falling back to FLUX text→image", err)
+			if err := GenerateAICharacterImage(ctx, cfg, s.hfToken, basePath); err != nil {
+				return fmt.Errorf("generate base image: %w", err)
+			}
+		}
+	} else {
+		if err := GenerateAICharacterImage(ctx, cfg, s.hfToken, basePath); err != nil {
+			return fmt.Errorf("generate base image: %w", err)
+		}
+	}
+	defer os.Remove(basePath)
+
+	animCfg := cfg
+	animCfg.InputImages = []string{basePath}
+	animCfg.AnimationStyle = StyleKenBurns
+	return GenerateVideo(animCfg)
+}
+
+// hasRealImage reports whether the slice contains a genuine uploaded image path
+// (not empty and not the "ai-generated" placeholder the frontend sends for AI styles).
+func hasRealImage(paths []string) bool {
+	for _, p := range paths {
+		if p != "" && p != "ai-generated" {
+			return true
+		}
+	}
+	return false
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // renderTalking builds a talking-character video: FLUX generates the character

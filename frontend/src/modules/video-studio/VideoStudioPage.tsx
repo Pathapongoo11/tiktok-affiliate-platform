@@ -164,10 +164,15 @@ export default function VideoStudioPage() {
             <p className="text-sm text-gray-400 mt-1">JPG, PNG, WebP • Then pick a style and press Generate</p>
           </div>
 
-          {isAIStyle && (
+          {isAIStyle && uploadedPaths.length > 0 && (
+            <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-md px-2 py-1.5">
+              ✨ AI จะแปลงรูปสินค้าที่อัปโหลด ให้เป็นการ์ตูน/3D โดยคงรูปสินค้าจริงไว้ (img2img)
+            </p>
+          )}
+          {isAIStyle && uploadedPaths.length === 0 && (
             <p className="text-[11px] text-pink-600 bg-pink-50 border border-pink-200 rounded-md px-2 py-1.5">
-              ⚠️ AI styles สร้างภาพใหม่จาก "Scene Prompt" — ไม่ได้ใช้รูปที่อัปโหลด
-              (รูปที่อัปใช้กับสไตล์ Ken Burns / Zoom / Slide / Static เท่านั้น)
+              💡 อัปโหลดรูปสินค้า → AI จะแปลงเป็นการ์ตูนโดยคงสินค้าจริงไว้
+              (ถ้าไม่อัปรูป จะสร้างภาพใหม่ทั้งหมดจาก "Scene Prompt")
             </p>
           )}
 
