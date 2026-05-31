@@ -111,6 +111,16 @@ if (Test-Path $pre) {
         Set-Content $pre
 }
 
+# (iv) croper raises a bare string when no face is found; in Py3 that's a
+# TypeError, masking the real "no face detected" cause. Raise a real exception.
+$croper = Join-Path $SadTalkerDir "src\utils\croper.py"
+if (Test-Path $croper) {
+    (Get-Content $croper) `
+        -replace "raise 'can not detect the landmark from source image'", `
+                 "raise RuntimeError('can not detect the landmark from source image')" |
+        Set-Content $croper
+}
+
 # 5. Download model checkpoints -------------------------------------------------
 # SadTalker's download_models.sh uses wget/unzip which aren't on Windows; download
 # the release assets directly with Invoke-WebRequest instead.

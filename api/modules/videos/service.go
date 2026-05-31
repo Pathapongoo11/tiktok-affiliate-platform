@@ -195,18 +195,35 @@ func (s *Service) renderTalking(ctx context.Context, cfg VideoConfig) error {
 		return GenerateAIVideo(ctx, cfg, s.hfToken)
 	}
 
-	// Stage 1: FLUX generates the character image.
+	// Stage 1: build the character image.
+	// If the user uploaded a real photo, stylize it (preserve the product/person);
+	// otherwise FLUX generates a portrait from the scene prompt.
 	charPath := cfg.OutputPath + ".character.png"
-	if err := GenerateAICharacterImage(ctx, cfg, s.hfToken, charPath); err != nil {
+	if hasRealImage(cfg.InputImages) {
+		prompt := buildCartoonPrompt(firstNonEmpty(cfg.ScenePrompt, cfg.OverlayText), cfg.AnimationStyle)
+		if err := StylizeImage(ctx, s.lipsyncURL, cfg.InputImages[0], prompt, charPath); err != nil {
+			log.Printf("[video] img2img failed (%v) — using FLUX text→image", err)
+			if err := GenerateAICharacterImage(ctx, cfg, s.hfToken, charPath); err != nil {
+				return fmt.Errorf("generate character image: %w", err)
+			}
+		}
+	} else if err := GenerateAICharacterImage(ctx, cfg, s.hfToken, charPath); err != nil {
 		return fmt.Errorf("generate character image: %w", err)
 	}
 	defer os.Remove(charPath)
 
 	// Stage 2: SadTalker lip-syncs the character to the audio.
+	// SadTalker can fail when no face is detected in the image (e.g. a product
+	// shot with no person). Rather than hard-failing the job, fall back to
+	// animating the same image with Ken Burns so the user still gets a video.
 	talkCfg := cfg
 	talkCfg.InputImages = []string{charPath}
 	if err := GenerateTalkingVideo(ctx, talkCfg, s.lipsyncURL); err != nil {
-		return fmt.Errorf("lipsync: %w", err)
+		log.Printf("[video] lipsync failed (%v) — falling back to Ken Burns on the character image", err)
+		fallback := cfg
+		fallback.InputImages = []string{charPath}
+		fallback.AnimationStyle = StyleKenBurns
+		return GenerateVideo(fallback)
 	}
 	return nil
 }
