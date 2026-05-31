@@ -15,6 +15,7 @@ import (
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/db"
 	apimiddleware "github.com/Pathapongoo11/tiktok-affiliate-platform/api/middleware"
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/auth"
+	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/batch"
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/dashboard"
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/posts"
 	"github.com/Pathapongoo11/tiktok-affiliate-platform/api/modules/products"
@@ -84,8 +85,13 @@ func main() {
 			r.Mount("/products", productsHandler.Routes())
 
 			// Posts
-			postsHandler := posts.NewHandler(posts.NewService(posts.NewRepository(pool)))
+			postsSvc := posts.NewService(posts.NewRepository(pool))
+			postsHandler := posts.NewHandler(postsSvc)
 			r.Mount("/posts", postsHandler.Routes())
+
+			// Content factory — batch content calendar from a product list
+			batchHandler := batch.NewHandler(batch.NewService(postsSvc, postsSvc))
+			r.Mount("/batch", batchHandler.Routes())
 
 			// Dashboard
 			dashboardHandler := dashboard.NewHandler(dashboard.NewService(pool, redisClient))
