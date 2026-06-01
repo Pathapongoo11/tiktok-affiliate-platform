@@ -108,13 +108,16 @@ controllable layers instead — all free on the local RTX 4060.
 **Decision:** Hybrid compositing pipeline (chosen over Wan/LTX or paid Kling).
 Build in 3 phases; Phase 1 first.
 
-### Phase 1 — Background swap + product overlay (FREE, do now)
-- `rembg` removes the background from the product photo (and/or person)
-- FLUX generates a new realistic background scene
-- FFmpeg composites: talking person (SadTalker) + new background + product
-  picture-in-picture in a corner
-- New endpoint(s) on the lipsync microservice; new style/option in the API
-- Fully controllable layout (not random like AI video)
+### Phase 1 — Background swap + product overlay (FREE) ✅ wired end-to-end
+- `rembg` removes the background from the product photo ✓
+- FFmpeg composites: talking presenter (SadTalker) + product picture-in-picture
+  in a corner ✓ (yuv420p + faststart, plays in WMP/browsers)
+- ✅ **Phase 1.5 (PR #29):** wired into the API as the `ai_review` animation
+  style + frontend button. One generate call now runs FLUX presenter →
+  SadTalker → rembg → overlay, with graceful fallbacks. `/tts` verified working
+  end-to-end (CLI shell-out + retry).
+- Remaining for Phase 1: FLUX-generated *replacement background* behind the
+  presenter (currently presenter keeps its FLUX scene; product is the cut-out).
 
 ### Phase 2 — Evaluate Wan 2.1 / LTX-Video on the RTX 4060 (FREE experiment)
 - Install + benchmark speed & quality (like the SadTalker trial)
