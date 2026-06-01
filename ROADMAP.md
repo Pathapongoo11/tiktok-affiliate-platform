@@ -10,6 +10,38 @@ autonomous track of work.
 
 ---
 
+## ⭐ THE 3 LONG-RUNNING GOALS TO RUN NOW (definitive)
+
+Everything below was scoped from what we have actually built and verified
+(video engine, batch factory, SadTalker/img2img/rembg microservice, scheduler +
+worker background loops). These are the three engines that, once running, keep
+producing value over long periods with little intervention:
+
+### 1. 🏭 Content Factory Autopilot  *(no blockers — best ROI, run first)*
+A scheduled loop that, every day/week, auto-generates a fresh batch of TikTok
+content (hook + script + caption + hashtags + video) across the user's products
+and fills the calendar — using the existing `/api/batch/plan` + video engine +
+the `scheduler`/`worker` background infra. Runs indefinitely; output compounds.
+**Done when:** a cron-style job produces N ready posts/day automatically.
+
+### 2. 🎬 Review-Video Engine (GOAL 4)  *(no blockers — highest content quality)*
+Every product automatically becomes a realistic "person reviews the product"
+video: SadTalker talking presenter + Thai TTS + rembg product cut-out + FLUX
+background, composited (Phase 1 building blocks already verified). Then evaluate
+local image-to-video (Wan/LTX) on the RTX 4060.
+**Done when:** one call turns a product into a finished review MP4 end-to-end.
+
+### 3. 🚀 Go-Live Flywheel (GOAL 3)  *(blocked on TikTok credentials only)*
+Close the loop: scheduler auto-publishes due posts to real TikTok → analytics
+sync → dashboard ranks what sells → ranking feeds Goal 1's product picks. A
+self-reinforcing growth engine. Code paths exist behind `mockMode`.
+**Done when:** real OAuth verified, posts publish, analytics drive next batch.
+
+**Run order:** 1 → 2 in parallel now (both free, local, no blockers); 3 the
+moment TikTok credentials arrive.
+
+---
+
 ## 🥇 GOAL 1 — Real product likeness (FLUX img2img)
 **Why #1:** Right now AI styles invent a brand-new image from a text prompt and
 ignore the uploaded product photo (PENDING_PLAN BUG 2). For affiliate sales the
