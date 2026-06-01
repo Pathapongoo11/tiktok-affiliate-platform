@@ -82,9 +82,11 @@ def overlay_pip(
     x_expr, y_expr = pos.replace("m", str(margin)).split(":")
 
     # Scale overlay to `scale`*base_width, keep aspect, then overlay at the corner.
+    # Force yuv420p output: overlaying an RGBA PNG otherwise yields yuv444p/yuva420p,
+    # which Windows Media Player / browsers reject ("unsupported encoding", 0x80004005).
     filter_complex = (
         f"[1:v]scale=iw*{scale}:-1[ov];"
-        f"[0:v][ov]overlay={x_expr}:{y_expr}:format=auto"
+        f"[0:v][ov]overlay={x_expr}:{y_expr}:format=auto,format=yuv420p"
     )
 
     Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
@@ -93,7 +95,9 @@ def overlay_pip(
         "-i", base_path,
         "-i", overlay_png,
         "-filter_complex", filter_complex,
-        "-c:a", "copy",  # keep base audio if present
+        "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",  # web/WMP-friendly: moov atom at the front
+        "-c:a", "aac", "-b:a", "128k",  # re-encode audio for broad compatibility
         dest_path,
     ]
     subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
