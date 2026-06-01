@@ -136,12 +136,19 @@ def health() -> JSONResponse:
         img2img_ready = _i2i.is_available()
     except Exception:  # noqa: BLE001
         pass
+    rembg_ready = False
+    try:
+        import compose as _c
+        rembg_ready = _c.is_available()
+    except Exception:  # noqa: BLE001
+        pass
     return JSONResponse(
         {
             "status": "ok" if ready else "sadtalker_not_found",
             "sadtalker_dir": str(SADTALKER_DIR),
             "sadtalker_ready": ready,
             "img2img_ready": img2img_ready,
+            "rembg_ready": rembg_ready,
             "gpu": gpu,
         }
     )
@@ -185,6 +192,80 @@ async def img2img_endpoint(image: UploadFile = File(...), prompt: str = Form(...
     if not dst.exists() or dst.stat().st_size == 0:
         raise HTTPException(500, "img2img produced no image")
     return FileResponse(str(dst), media_type="image/png", filename="stylized.png")
+
+
+@app.post("/rembg")
+async def rembg_endpoint(image: UploadFile = File(...)) -> FileResponse:
+    """Remove the background from an image, returning a transparent RGBA PNG.
+
+    Used to cut out the product (or person) before compositing (GOAL 4 Phase 1).
+    """
+    try:
+        import compose
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"compose unavailable: {exc}")
+    if not compose.is_available():
+        raise HTTPException(503, "rembg not installed (pip install rembg onnxruntime)")
+
+    src = WORK_DIR / f"rmbg_src_{uuid.uuid4().hex}{_suffix(image.filename, '.png')}"
+    dst = WORK_DIR / f"rmbg_out_{uuid.uuid4().hex}.png"
+    _save(image, src)
+    try:
+        compose.remove_background(str(src), str(dst))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"rembg failed: {type(exc).__name__}: {exc}")
+    finally:
+        try:
+            src.unlink()
+        except OSError:
+            pass
+
+    if not dst.exists() or dst.stat().st_size == 0:
+        raise HTTPException(500, "rembg produced no image")
+    return FileResponse(str(dst), media_type="image/png", filename="cutout.png")
+
+
+@app.post("/overlay")
+async def overlay_endpoint(
+    base: UploadFile = File(...),
+    overlay: UploadFile = File(...),
+    corner: str = Form("bottom_right"),
+    scale: str = Form("0.3"),
+) -> FileResponse:
+    """Composite an overlay PNG onto a base video/image as picture-in-picture.
+
+    Used to place the product cut-out in a corner of the talking-person video
+    (GOAL 4 Phase 1). Returns an MP4 (base is expected to be the talking video).
+    """
+    try:
+        import compose
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"compose unavailable: {exc}")
+
+    try:
+        sc = float(scale)
+    except ValueError:
+        sc = 0.3
+
+    base_p = WORK_DIR / f"ov_base_{uuid.uuid4().hex}{_suffix(base.filename, '.mp4')}"
+    ov_p = WORK_DIR / f"ov_png_{uuid.uuid4().hex}{_suffix(overlay.filename, '.png')}"
+    dst = WORK_DIR / f"ov_out_{uuid.uuid4().hex}.mp4"
+    _save(base, base_p)
+    _save(overlay, ov_p)
+    try:
+        compose.overlay_pip(str(base_p), str(ov_p), str(dst), corner=corner, scale=sc)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"overlay failed: {type(exc).__name__}: {exc}")
+    finally:
+        for p in (base_p, ov_p):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+    if not dst.exists() or dst.stat().st_size == 0:
+        raise HTTPException(500, "overlay produced no output")
+    return FileResponse(str(dst), media_type="video/mp4", filename="composed.mp4")
 
 
 @app.post("/generate", status_code=202)

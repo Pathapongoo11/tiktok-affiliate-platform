@@ -59,13 +59,48 @@ needs credentials + GetUserInfo + publish-status polling (noted earlier).
 ---
 
 ## Execution order
-1. **GOAL 1** now — biggest quality lift, fully local/free, no external blockers.
-2. GOAL 2 — build on working video gen to scale output.
-3. GOAL 3 — when TikTok credentials are available.
+1. ✅ **GOAL 1** done — img2img product likeness (PR #27).
+2. ✅ **GOAL 2** done — content factory batch calendar (PR #28).
+3. **GOAL 4 (NEW)** — realistic "review" videos (in progress, see below).
+4. GOAL 3 — when TikTok credentials are available.
+
+---
+
+## 🎥 GOAL 4 — Realistic review videos (person + product + background)
+**Why:** User wants "a person reviewing the product" videos with a realistic,
+swappable background — the highest-converting TikTok affiliate format. True
+"person holding the product" needs paid video AI (Kling ~$1/clip) or is
+uncontrollable on free image-to-video (Wan/LTX ~70% fit). So we compose it in
+controllable layers instead — all free on the local RTX 4060.
+
+**Decision:** Hybrid compositing pipeline (chosen over Wan/LTX or paid Kling).
+Build in 3 phases; Phase 1 first.
+
+### Phase 1 — Background swap + product overlay (FREE, do now)
+- `rembg` removes the background from the product photo (and/or person)
+- FLUX generates a new realistic background scene
+- FFmpeg composites: talking person (SadTalker) + new background + product
+  picture-in-picture in a corner
+- New endpoint(s) on the lipsync microservice; new style/option in the API
+- Fully controllable layout (not random like AI video)
+
+### Phase 2 — Evaluate Wan 2.1 / LTX-Video on the RTX 4060 (FREE experiment)
+- Install + benchmark speed & quality (like the SadTalker trial)
+- Wan 2.1 small (8GB) / LTX-Video (8-12GB) — Apache 2.0, commercial OK
+- Go/no-go based on real numbers before integrating
+
+### Phase 3 — Integrate local image→video as a new style (if Phase 2 passes)
+- Add e.g. `ai_motion_video` style routing to Wan/LTX in the microservice
+
+### Considered & rejected (for now)
+- **Kling API (Fal.ai):** best quality but **paid** (~$0.40-1/clip). Free tier is
+  web-only (66 cr/day, manual) — can't automate for free. Revisit for hero clips.
 
 ## Done / foundation (do not redo)
 - FFmpeg styles (ken_burns/zoom/slide/static) ✓
 - AI cartoon/video via FLUX text→image ✓
 - AI talking via SadTalker lip-sync on local GPU ✓
 - Thai TTS (edge-tts) ✓
+- img2img product likeness (SD 1.5) ✓
+- Content factory batch calendar ✓
 - Schedule fix, smoke tests, NULL fix, scene_prompt ✓
