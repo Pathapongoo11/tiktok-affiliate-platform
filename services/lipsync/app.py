@@ -359,28 +359,31 @@ def download(job_id: str) -> FileResponse:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 async def synthesize_speech(text: str, voice: str, dest: Path) -> None:
-    """Render `text` to an MP3 at `dest` using edge-tts' in-process async API.
+    """Render `text` to an MP3 at `dest` using the edge-tts CLI.
 
-    Awaited directly from the async handler (no asyncio.run — that errors inside
-    FastAPI's running event loop). In-process avoids the detached-subprocess
-    environment that made the Microsoft token handshake fail with 403.
-
-    edge-tts can still hit a transient 403, so retry a few times.
+    The in-process Communicate().save() API intermittently raises
+    NoAudioReceived even when the service is reachable, whereas the CLI
+    (`python -m edge_tts`) succeeds reliably from the same environment — so we
+    shell out to it. Retried a few times for transient failures.
     Raises RuntimeError on persistent failure.
     """
     import asyncio
-    import edge_tts
 
+    dest.parent.mkdir(parents=True, exist_ok=True)
     last_err = ""
     for attempt in range(1, 4):
-        try:
-            communicate = edge_tts.Communicate(text, voice)
-            await communicate.save(str(dest))
-            if dest.exists() and dest.stat().st_size > 0:
-                return
-            last_err = "edge-tts produced an empty file"
-        except Exception as exc:  # noqa: BLE001
-            last_err = f"{type(exc).__name__}: {exc}"
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "edge_tts",
+            "--voice", voice,
+            "--text", text,
+            "--write-media", str(dest),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+            return
+        last_err = (stderr.decode(errors="ignore")[-300:] or "empty output").strip()
         if dest.exists():
             try:
                 dest.unlink()
@@ -388,7 +391,7 @@ async def synthesize_speech(text: str, voice: str, dest: Path) -> None:
                 pass
         if attempt < 3:
             await asyncio.sleep(2)
-    raise RuntimeError(f"edge-tts failed after 3 attempts: {last_err}")
+    raise RuntimeError(f"edge-tts CLI failed after 3 attempts: {last_err}")
 
 
 def _save(upload: UploadFile, dest: Path) -> None:

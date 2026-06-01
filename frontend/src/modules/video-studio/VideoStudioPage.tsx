@@ -265,11 +265,12 @@ export default function VideoStudioPage() {
               <span className="text-xs font-semibold text-purple-600">✨ AI-Powered</span>
               <span className="text-[10px] text-gray-400">(generates a brand-new AI scene image, then animates it)</span>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { value: 'ai_video',   label: '🤖 AI Motion',  desc: '3D render' },
                 { value: 'ai_cartoon', label: '🎨 AI Cartoon', desc: 'Character ad' },
                 { value: 'ai_talking', label: '🗣️ AI Talking', desc: 'Lip-sync + voice' },
+                { value: 'ai_review',  label: '🎥 AI Review',  desc: 'Presenter + product' },
               ].map(({ value, label, desc }) => (
                 <button
                   key={value}
@@ -287,8 +288,18 @@ export default function VideoStudioPage() {
               ))}
             </div>
 
-            {/* ai_talking: type Thai text → auto TTS, or upload your own audio below */}
-            {animationStyle === 'ai_talking' && (
+            {/* ai_review: realistic "person reviews the product" — presenter speaks
+                (TTS/upload) + the real product photo overlaid picture-in-picture */}
+            {animationStyle === 'ai_review' && (
+              <p className="text-[11px] text-purple-600 leading-snug pt-2 border-t border-dashed border-pink-200">
+                🎥 พรีเซนเตอร์พูดรีวิว (สร้างด้วย AI + lip-sync) พร้อม
+                <b> รูปสินค้าจริงที่อัปโหลด</b> ลอยมุมขวาล่าง — อัปโหลดรูปสินค้า +
+                พิมพ์คำพูดด้านล่าง
+              </p>
+            )}
+
+            {/* ai_talking / ai_review: type Thai text → auto TTS, or upload audio below */}
+            {(animationStyle === 'ai_talking' || animationStyle === 'ai_review') && (
               <div className="space-y-1.5 pt-2 border-t border-dashed border-pink-200">
                 <label className="block text-sm font-medium text-gray-700">
                   🎤 คำพูด (Voice Script) <span className="text-pink-600">— พิมพ์ภาษาไทย ระบบจะสร้างเสียงให้</span>
@@ -310,7 +321,7 @@ export default function VideoStudioPage() {
             )}
 
             {/* Scene Prompt — shown for all AI styles */}
-            {(animationStyle === 'ai_cartoon' || animationStyle === 'ai_video' || animationStyle === 'ai_talking') && (
+            {(animationStyle === 'ai_cartoon' || animationStyle === 'ai_video' || animationStyle === 'ai_talking' || animationStyle === 'ai_review') && (
               <div className="space-y-1.5 pt-2 border-t border-dashed border-pink-200">
                 <label className="block text-sm font-medium text-gray-700">
                   🎬 Scene Prompt <span className="text-pink-600">(English — describe the scene/character)</span>

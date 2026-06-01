@@ -44,9 +44,10 @@ func (s *Service) CreateVideoJob(ctx context.Context, userID uuid.UUID, req Crea
 	}
 
 	audioPath := req.AudioPath
-	// ai_talking with text but no audio → synthesize Thai speech up front.
-	// edge-tts is fast (~1-2s); the resulting MP3 is stored like any uploaded audio.
-	if req.AnimationStyle == StyleAITalking && audioPath == "" && req.TTSText != "" && s.lipsyncURL != "" {
+	// ai_talking / ai_review with text but no audio → synthesize Thai speech up
+	// front. edge-tts is fast (~1-2s); the MP3 is stored like any uploaded audio.
+	if (req.AnimationStyle == StyleAITalking || req.AnimationStyle == StyleAIReview) &&
+		audioPath == "" && req.TTSText != "" && s.lipsyncURL != "" {
 		if p, err := s.synthesizeTTS(ctx, req.TTSText, req.TTSVoice); err != nil {
 			log.Printf("[video] TTS synthesis failed (will fall back): %v", err)
 		} else {
@@ -134,7 +135,60 @@ func (s *Service) render(ctx context.Context, cfg VideoConfig) error {
 	if cfg.AnimationStyle == StyleAITalking {
 		return s.renderTalking(ctx, cfg)
 	}
+	if cfg.AnimationStyle == StyleAIReview {
+		return s.renderReview(ctx, cfg)
+	}
 	return s.renderAICartoon(ctx, cfg)
+}
+
+// renderReview builds a realistic "person reviews the product" video (GOAL 4
+// Phase 1): a FLUX-generated presenter lip-synced to the voice track, with the
+// real product photo (background removed via rembg) composited picture-in-picture.
+//
+// Pipeline: FLUX character → SadTalker talking head → rembg product cut-out →
+// FFmpeg overlay (bottom-right PiP). Degrades gracefully:
+//   - no service / no audio → ai_cartoon (FLUX + Ken Burns)
+//   - no real product photo → presenter video alone (just the talking head)
+//   - rembg/overlay failure  → presenter video alone
+func (s *Service) renderReview(ctx context.Context, cfg VideoConfig) error {
+	if s.lipsyncURL == "" || cfg.AudioPath == "" {
+		log.Printf("[video] ai_review unavailable (lipsyncURL set=%t, audio set=%t) — falling back to ai_cartoon",
+			s.lipsyncURL != "", cfg.AudioPath != "")
+		cfg.AnimationStyle = StyleAICartoon
+		return GenerateAIVideo(ctx, cfg, s.hfToken)
+	}
+
+	// Without a real product photo there's nothing to composite — the talking
+	// presenter alone is the review video.
+	if !hasRealImage(cfg.InputImages) {
+		log.Printf("[video] ai_review: no real product image — rendering presenter only")
+		return s.renderTalking(ctx, cfg)
+	}
+
+	// Stage 1: FLUX presenter + SadTalker → base talking-head MP4 (temp file).
+	presenterPath := cfg.OutputPath + ".presenter.mp4"
+	talkCfg := cfg
+	talkCfg.OutputPath = presenterPath
+	if err := s.renderTalking(ctx, talkCfg); err != nil {
+		return fmt.Errorf("review presenter: %w", err)
+	}
+	defer os.Remove(presenterPath)
+
+	// Stage 2: cut out the product background (rembg). If it fails, ship the
+	// presenter alone rather than hard-failing the whole job.
+	cutoutPath := cfg.OutputPath + ".product.png"
+	if err := RemoveBackground(ctx, s.lipsyncURL, cfg.InputImages[0], cutoutPath); err != nil {
+		log.Printf("[video] ai_review: rembg failed (%v) — shipping presenter alone", err)
+		return os.Rename(presenterPath, cfg.OutputPath)
+	}
+	defer os.Remove(cutoutPath)
+
+	// Stage 3: overlay the product picture-in-picture (bottom-right, 30% width).
+	if err := OverlayProduct(ctx, s.lipsyncURL, presenterPath, cutoutPath, cfg.OutputPath, "bottom_right", 0.3); err != nil {
+		log.Printf("[video] ai_review: overlay failed (%v) — shipping presenter alone", err)
+		return os.Rename(presenterPath, cfg.OutputPath)
+	}
+	return nil
 }
 
 // renderAICartoon produces the AI base image then animates it with Ken Burns.
