@@ -146,6 +146,84 @@ func StylizeImage(ctx context.Context, baseURL, srcImagePath, prompt, destPath s
 	return nil
 }
 
+// RemoveBackground sends an image to /rembg and writes the transparent cut-out
+// PNG to destPath (GOAL 4: prepare the product/person for compositing).
+func RemoveBackground(ctx context.Context, baseURL, srcImagePath, destPath string) error {
+	if baseURL == "" {
+		return fmt.Errorf("lipsync service url not configured")
+	}
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	if err := addFilePart(w, "image", srcImagePath); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("close multipart: %w", err)
+	}
+	return postMultipart(ctx, baseURL+"/rembg", w.FormDataContentType(), body, destPath, 2*time.Minute)
+}
+
+// OverlayProduct composites a product PNG onto a base video as picture-in-picture
+// (GOAL 4: put the product in a corner of the talking-person video).
+// corner is one of bottom_right/bottom_left/top_right/top_left.
+func OverlayProduct(ctx context.Context, baseURL, baseVideoPath, overlayPNG, destPath, corner string, scale float64) error {
+	if baseURL == "" {
+		return fmt.Errorf("lipsync service url not configured")
+	}
+	if corner == "" {
+		corner = "bottom_right"
+	}
+	if scale <= 0 {
+		scale = 0.3
+	}
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	if err := addFilePart(w, "base", baseVideoPath); err != nil {
+		return err
+	}
+	if err := addFilePart(w, "overlay", overlayPNG); err != nil {
+		return err
+	}
+	_ = w.WriteField("corner", corner)
+	_ = w.WriteField("scale", fmt.Sprintf("%.3f", scale))
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("close multipart: %w", err)
+	}
+	return postMultipart(ctx, baseURL+"/overlay", w.FormDataContentType(), body, destPath, 5*time.Minute)
+}
+
+// postMultipart POSTs a prepared multipart body and streams the response to destPath.
+func postMultipart(ctx context.Context, url, contentType string, body *bytes.Buffer, destPath string, timeout time.Duration) error {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("failed to create output dir: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", contentType)
+
+	resp, err := (&http.Client{Timeout: timeout}).Do(req)
+	if err != nil {
+		return fmt.Errorf("http: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("%s returned %d: %s", url, resp.StatusCode, truncate(string(b), 200))
+	}
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create output file: %w", err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return fmt.Errorf("write output file: %w", err)
+	}
+	return nil
+}
+
 // GenerateTalkingVideo turns the source image into a talking-head MP4 using the
 // lip-sync microservice, then writes the result to cfg.OutputPath.
 //

@@ -136,12 +136,19 @@ def health() -> JSONResponse:
         img2img_ready = _i2i.is_available()
     except Exception:  # noqa: BLE001
         pass
+    rembg_ready = False
+    try:
+        import compose as _c
+        rembg_ready = _c.is_available()
+    except Exception:  # noqa: BLE001
+        pass
     return JSONResponse(
         {
             "status": "ok" if ready else "sadtalker_not_found",
             "sadtalker_dir": str(SADTALKER_DIR),
             "sadtalker_ready": ready,
             "img2img_ready": img2img_ready,
+            "rembg_ready": rembg_ready,
             "gpu": gpu,
         }
     )
@@ -185,6 +192,80 @@ async def img2img_endpoint(image: UploadFile = File(...), prompt: str = Form(...
     if not dst.exists() or dst.stat().st_size == 0:
         raise HTTPException(500, "img2img produced no image")
     return FileResponse(str(dst), media_type="image/png", filename="stylized.png")
+
+
+@app.post("/rembg")
+async def rembg_endpoint(image: UploadFile = File(...)) -> FileResponse:
+    """Remove the background from an image, returning a transparent RGBA PNG.
+
+    Used to cut out the product (or person) before compositing (GOAL 4 Phase 1).
+    """
+    try:
+        import compose
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"compose unavailable: {exc}")
+    if not compose.is_available():
+        raise HTTPException(503, "rembg not installed (pip install rembg onnxruntime)")
+
+    src = WORK_DIR / f"rmbg_src_{uuid.uuid4().hex}{_suffix(image.filename, '.png')}"
+    dst = WORK_DIR / f"rmbg_out_{uuid.uuid4().hex}.png"
+    _save(image, src)
+    try:
+        compose.remove_background(str(src), str(dst))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"rembg failed: {type(exc).__name__}: {exc}")
+    finally:
+        try:
+            src.unlink()
+        except OSError:
+            pass
+
+    if not dst.exists() or dst.stat().st_size == 0:
+        raise HTTPException(500, "rembg produced no image")
+    return FileResponse(str(dst), media_type="image/png", filename="cutout.png")
+
+
+@app.post("/overlay")
+async def overlay_endpoint(
+    base: UploadFile = File(...),
+    overlay: UploadFile = File(...),
+    corner: str = Form("bottom_right"),
+    scale: str = Form("0.3"),
+) -> FileResponse:
+    """Composite an overlay PNG onto a base video/image as picture-in-picture.
+
+    Used to place the product cut-out in a corner of the talking-person video
+    (GOAL 4 Phase 1). Returns an MP4 (base is expected to be the talking video).
+    """
+    try:
+        import compose
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"compose unavailable: {exc}")
+
+    try:
+        sc = float(scale)
+    except ValueError:
+        sc = 0.3
+
+    base_p = WORK_DIR / f"ov_base_{uuid.uuid4().hex}{_suffix(base.filename, '.mp4')}"
+    ov_p = WORK_DIR / f"ov_png_{uuid.uuid4().hex}{_suffix(overlay.filename, '.png')}"
+    dst = WORK_DIR / f"ov_out_{uuid.uuid4().hex}.mp4"
+    _save(base, base_p)
+    _save(overlay, ov_p)
+    try:
+        compose.overlay_pip(str(base_p), str(ov_p), str(dst), corner=corner, scale=sc)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"overlay failed: {type(exc).__name__}: {exc}")
+    finally:
+        for p in (base_p, ov_p):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+    if not dst.exists() or dst.stat().st_size == 0:
+        raise HTTPException(500, "overlay produced no output")
+    return FileResponse(str(dst), media_type="video/mp4", filename="composed.mp4")
 
 
 @app.post("/generate", status_code=202)
@@ -278,28 +359,31 @@ def download(job_id: str) -> FileResponse:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 async def synthesize_speech(text: str, voice: str, dest: Path) -> None:
-    """Render `text` to an MP3 at `dest` using edge-tts' in-process async API.
+    """Render `text` to an MP3 at `dest` using the edge-tts CLI.
 
-    Awaited directly from the async handler (no asyncio.run — that errors inside
-    FastAPI's running event loop). In-process avoids the detached-subprocess
-    environment that made the Microsoft token handshake fail with 403.
-
-    edge-tts can still hit a transient 403, so retry a few times.
+    The in-process Communicate().save() API intermittently raises
+    NoAudioReceived even when the service is reachable, whereas the CLI
+    (`python -m edge_tts`) succeeds reliably from the same environment — so we
+    shell out to it. Retried a few times for transient failures.
     Raises RuntimeError on persistent failure.
     """
     import asyncio
-    import edge_tts
 
+    dest.parent.mkdir(parents=True, exist_ok=True)
     last_err = ""
     for attempt in range(1, 4):
-        try:
-            communicate = edge_tts.Communicate(text, voice)
-            await communicate.save(str(dest))
-            if dest.exists() and dest.stat().st_size > 0:
-                return
-            last_err = "edge-tts produced an empty file"
-        except Exception as exc:  # noqa: BLE001
-            last_err = f"{type(exc).__name__}: {exc}"
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "edge_tts",
+            "--voice", voice,
+            "--text", text,
+            "--write-media", str(dest),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+            return
+        last_err = (stderr.decode(errors="ignore")[-300:] or "empty output").strip()
         if dest.exists():
             try:
                 dest.unlink()
@@ -307,7 +391,7 @@ async def synthesize_speech(text: str, voice: str, dest: Path) -> None:
                 pass
         if attempt < 3:
             await asyncio.sleep(2)
-    raise RuntimeError(f"edge-tts failed after 3 attempts: {last_err}")
+    raise RuntimeError(f"edge-tts CLI failed after 3 attempts: {last_err}")
 
 
 def _save(upload: UploadFile, dest: Path) -> None:

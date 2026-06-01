@@ -120,6 +120,88 @@ func TestStylizeImage_ServiceError_Propagates(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// RemoveBackground / OverlayProduct (compositing)
+// ---------------------------------------------------------------------------
+
+func TestRemoveBackground_HappyPath(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "p.jpg")
+	out := filepath.Join(dir, "cut.png")
+	require.NoError(t, os.WriteFile(src, []byte("fake"), 0o644))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/rembg", r.URL.Path)
+		require.NoError(t, r.ParseMultipartForm(1<<20))
+		_, _, ferr := r.FormFile("image")
+		assert.NoError(t, ferr)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("CUTOUT-PNG"))
+	}))
+	defer srv.Close()
+
+	require.NoError(t, videos.RemoveBackground(context.Background(), srv.URL, src, out))
+	got, _ := os.ReadFile(out)
+	assert.Equal(t, "CUTOUT-PNG", string(got))
+}
+
+func TestRemoveBackground_NoURL(t *testing.T) {
+	err := videos.RemoveBackground(context.Background(), "", "p.png", filepath.Join(t.TempDir(), "o.png"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "url not configured")
+}
+
+func TestOverlayProduct_HappyPath(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.mp4")
+	ov := filepath.Join(dir, "ov.png")
+	out := filepath.Join(dir, "out.mp4")
+	require.NoError(t, os.WriteFile(base, []byte("vid"), 0o644))
+	require.NoError(t, os.WriteFile(ov, []byte("png"), 0o644))
+
+	var gotCorner, gotScale string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/overlay", r.URL.Path)
+		require.NoError(t, r.ParseMultipartForm(1<<20))
+		gotCorner = r.FormValue("corner")
+		gotScale = r.FormValue("scale")
+		_, _, e1 := r.FormFile("base")
+		_, _, e2 := r.FormFile("overlay")
+		assert.NoError(t, e1)
+		assert.NoError(t, e2)
+		w.Header().Set("Content-Type", "video/mp4")
+		_, _ = w.Write([]byte("COMPOSED-MP4"))
+	}))
+	defer srv.Close()
+
+	require.NoError(t, videos.OverlayProduct(context.Background(), srv.URL, base, ov, out, "top_left", 0.25))
+	assert.Equal(t, "top_left", gotCorner)
+	assert.Equal(t, "0.250", gotScale)
+	got, _ := os.ReadFile(out)
+	assert.Equal(t, "COMPOSED-MP4", string(got))
+}
+
+func TestOverlayProduct_DefaultsCornerAndScale(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.mp4")
+	ov := filepath.Join(dir, "ov.png")
+	require.NoError(t, os.WriteFile(base, []byte("v"), 0o644))
+	require.NoError(t, os.WriteFile(ov, []byte("p"), 0o644))
+
+	var gotCorner, gotScale string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseMultipartForm(1 << 20)
+		gotCorner = r.FormValue("corner")
+		gotScale = r.FormValue("scale")
+		_, _ = w.Write([]byte("x"))
+	}))
+	defer srv.Close()
+
+	require.NoError(t, videos.OverlayProduct(context.Background(), srv.URL, base, ov, filepath.Join(dir, "o.mp4"), "", 0))
+	assert.Equal(t, "bottom_right", gotCorner)
+	assert.Equal(t, "0.300", gotScale)
+}
+
+// ---------------------------------------------------------------------------
 // Guards (no network)
 // ---------------------------------------------------------------------------
 

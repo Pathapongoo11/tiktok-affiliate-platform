@@ -6,3 +6,8 @@ python-multipart==0.0.20
 # Free Thai (and multilingual) neural TTS — no API key required.
 # >=7.x required: older releases hit a 403 token handshake against MS servers.
 edge-tts>=7.2.8
+# Background removal for review-video compositing (GOAL 4).
+# Pinned to 2.0.50: rembg >= 2.0.60 requires numpy >= 2.3, which conflicts with
+# torch 2.2.2 + SadTalker (numpy < 2). 2.0.50 works with numpy 1.26.
+rembg==2.0.50
+onnxruntime>=1.16

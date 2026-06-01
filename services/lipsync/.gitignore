@@ -10,3 +10,10 @@ work/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Runtime/debug scratch artifacts (boot logs, pid, ad-hoc test media)
+boot.out
+boot.err
+*.pid
+*.mp3
+*.png

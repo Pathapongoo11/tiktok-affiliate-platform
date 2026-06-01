@@ -17,11 +17,17 @@ const (
 	// Lip-sync style (requires LIPSYNC_URL microservice + audio — falls back to
 	// ai_cartoon when unavailable). FLUX character → SadTalker talking head.
 	StyleAITalking = "ai_talking"
+
+	// Review style (GOAL 4 Phase 1): a talking presenter (FLUX + SadTalker)
+	// with the real product photo (background removed via rembg) composited as
+	// picture-in-picture. Requires LIPSYNC_URL + audio; falls back like ai_talking.
+	StyleAIReview = "ai_review"
 )
 
 // IsAIStyle reports whether the given style uses the Hugging Face FLUX pipeline.
 func IsAIStyle(style string) bool {
-	return style == StyleAIVideo || style == StyleAICartoon || style == StyleAITalking
+	return style == StyleAIVideo || style == StyleAICartoon ||
+		style == StyleAITalking || style == StyleAIReview
 }
 
 // CreateJobRequest is the payload for POST /api/videos/generate.
@@ -34,7 +40,7 @@ type CreateJobRequest struct {
 	TTSText        string     `json:"tts_text,omitempty"`  // ai_talking: synthesize this text to speech (Thai OK)
 	TTSVoice       string     `json:"tts_voice,omitempty"` // edge-tts voice; default th-TH-PremwadeeNeural
 	DurationSec    int        `json:"duration_seconds"`
-	AnimationStyle string     `json:"animation_style,omitempty"` // "" | "ken_burns" | "zoom_out" | "slide" | "static" | "ai_cartoon" | "ai_video" | "ai_talking"
+	AnimationStyle string     `json:"animation_style,omitempty"` // "" | "ken_burns" | "zoom_out" | "slide" | "static" | "ai_cartoon" | "ai_video" | "ai_talking" | "ai_review"
 }
 
 // VideoConfig holds FFmpeg generation parameters.

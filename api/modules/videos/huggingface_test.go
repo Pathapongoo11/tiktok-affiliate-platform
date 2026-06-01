@@ -21,6 +21,7 @@ func TestIsAIStyle(t *testing.T) {
 		videos.StyleAIVideo:   true,
 		videos.StyleAICartoon: true,
 		videos.StyleAITalking: true,
+		videos.StyleAIReview:  true,
 		videos.StyleKenBurns:  false,
 		videos.StyleZoomOut:   false,
 		videos.StyleSlide:     false,
